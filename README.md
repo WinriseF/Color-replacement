@@ -28,6 +28,8 @@ Python 3.x
 
 Pillow (PIL Fork) 库
 
+你也可以直接下载release
+
 ### ⚙️ 安装依赖
 在运行脚本之前，您需要安装 Pillow 库。打开您的终端或命令行，然后运行：
 
