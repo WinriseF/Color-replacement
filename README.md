@@ -87,19 +87,19 @@ python main.py
 处理完成后，程序会弹出操作成功的提示信息。
 
 ### 📸 示例截图
-<img src="img4.png" alt="程序主界面" width="500"/><br>
+<img src="images/img4.png" alt="程序主界面" width="500"/><br>
 处理前：<br>
-<img src="img1.png" alt="程序主界面" width="500"/><br>
+<img src="images/img1.png" alt="程序主界面" width="500"/><br>
 处理后：
 <table>
   <tr>
     <td align="center" valign="top">
-      <img src="img2.png" alt="替换颜色" width="350"/>
+      <img src="images/img2.png" alt="替换颜色" width="350"/>
       <br/>
       <em>颜色替换成黑色</em>
     </td>
     <td align="center" valign="top">
-      <img src="img3.png" alt="更改透明" width="350"/>
+      <img src="images/img3.png" alt="更改透明" width="350"/>
       <br/>
       <em>颜色更改成透明</em>
     </td>

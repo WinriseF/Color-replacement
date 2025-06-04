@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网页版图片颜色替换工具 (离线版)</title>
+    <style>
+    /* Modern UI with Clean Aesthetic */
+    body { 
+        font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        margin: 0; 
+        padding: 0; 
+        background: linear-gradient(135deg, #f5f7fa 0%, #e4e7f1 100%);
+        color: #2d3748;
+        line-height: 1.6;
+        min-height: 100vh;
+    }
+    
+    .container { 
+        max-width: 1280px; 
+        margin: 30px auto; 
+        background-color: #ffffff; 
+        padding: 30px; 
+        border-radius: 16px; 
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    /* Header with gradient accent */
+    header { 
+        text-align: center; 
+        margin-bottom: 30px;
+        position: relative;
+        padding-bottom: 20px;
+    }
+    
+    header::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 25%;
+        width: 50%;
+        height: 4px;
+        background: linear-gradient(90deg, #4A6CF7, #34D399);
+        border-radius: 2px;
+    }
+    
+    h1 { 
+        font-size: 2.4rem; 
+        margin-bottom: 0.5em; 
+        color: #2c3e50;
+        font-weight: 700;
+        background: linear-gradient(90deg, #4A6CF7, #34D399);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    header p {
+        font-size: 1.1rem;
+        color: #718096;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    
+    h3 { 
+        font-size: 1.2rem; 
+        margin-top: 1.8em; 
+        margin-bottom: 1em; 
+        color: #4A5568;
+        border-bottom: 2px solid #edf2f7;
+        padding-bottom: 0.6em;
+        font-weight: 600;
+        position: relative;
+    }
+    
+    h3::before {
+        content: '';
+        position: absolute;
+        bottom: -2px;
+        left: 0;
+        width: 50px;
+        height: 3px;
+        background: #4A6CF7;
+        border-radius: 3px;
+    }
+    
+    label { 
+        display: block; 
+        margin-bottom: 0.6em; 
+        font-weight: 500;
+        color: #4A5568;
+    }
+    
+    .main-layout-grid { 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 30px; 
+        margin-top: 20px;
+    }
+    
+    .controls-column { 
+        flex: 1; 
+        min-width: 340px; 
+        border: 1px solid #e2e8f0; 
+        padding: 25px; 
+        border-radius: 12px; 
+        background-color: #ffffff;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.03);
+    }
+    
+    .canvas-column { 
+        flex: 2; 
+        min-width: 400px; 
+        display: flex; 
+        flex-direction: column; 
+    }
+    
+    .controls-column > div { 
+        margin-bottom: 25px; 
+        padding-bottom: 25px;
+        border-bottom: 1px solid #edf2f7;
+    }
+    
+    .controls-column > div:last-child { 
+        margin-bottom: 0; 
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+    
+    .canvas-instructions { 
+        margin-bottom: 12px; 
+        text-align: center; 
+        font-size: 0.95rem; 
+        color: #718096;
+        background: #f8fafc;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+    
+    .canvas-container {
+        width: 100%; 
+        height: 500px; 
+        max-height: 70vh; 
+        border: 2px dashed #cbd5e0;
+        overflow: hidden; 
+        position: relative; 
+        background-color: #f8fafc; 
+        cursor: grab; 
+        border-radius: 10px; 
+        margin: 0 auto;
+        box-shadow: inset 0 2px 8px rgba(0,0,0,0.05);
+        transition: all 0.3s ease;
+    }
+    
+    .canvas-container:hover {
+        border-color: #a0aec0;
+    }
+    
+    #mainCanvas { 
+        display: block; 
+    }
+    
+    .color-preview { 
+        width: 32px; 
+        height: 32px; 
+        border: 1px solid #cbd5e0; 
+        display: inline-block; 
+        vertical-align: middle; 
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    input[type="number"], 
+    input[type="file"], 
+    button, 
+    select, 
+    input[type="color"] { 
+        padding: 12px 15px; 
+        margin: 8px 0; 
+        border: 1px solid #e2e8f0; 
+        border-radius: 8px; 
+        font-size: 1rem; 
+        box-sizing: border-box;
+        font-family: inherit;
+        transition: all 0.2s ease;
+        outline: none;
+    }
+    
+    input[type="number"]:focus, 
+    input[type="file"]:focus, 
+    button:focus, 
+    select:focus, 
+    input[type="color"]:focus {
+        border-color: #4A6CF7;
+        box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.15);
+    }
+    
+    input[type="file"], 
+    button, 
+    select { 
+        width: 100%;
+    }
+    
+    input[type="number"] { 
+        max-width: 100px; 
+        width: auto; 
+        background: #f8fafc;
+    }
+    
+    input[type="color"] { 
+        width: 50px; 
+        height: 40px; 
+        padding: 2px; 
+        vertical-align: middle;
+        cursor: pointer;
+        border-radius: 8px;
+    }
+    
+    input[type="radio"] { 
+        margin-right: 8px; 
+        vertical-align: middle;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+    
+    button { 
+        background: linear-gradient(135deg, #4A6CF7 0%, #3B53C7 100%); 
+        color: white; 
+        cursor: pointer; 
+        border: none;
+        transition: all 0.2s ease;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        padding: 14px 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(74, 108, 247, 0.2);
+    }
+    
+    button:hover { 
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(74, 108, 247, 0.3);
+    }
+    
+    button:active { 
+        transform: translateY(0);
+        box-shadow: 0 2px 4px rgba(74, 108, 247, 0.2);
+    }
+    
+    button:disabled { 
+        background: #e2e8f0; 
+        color: #a0aec0; 
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+    
+    #clearRoiBtn { 
+        background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+        box-shadow: 0 4px 6px rgba(239, 68, 68, 0.2);
+    }
+    
+    #clearRoiBtn:hover { 
+        box-shadow: 0 6px 12px rgba(239, 68, 68, 0.3);
+    }
+    
+    #processImageBtn { 
+        background: linear-gradient(135deg, #34D399 0%, #10B981 100%);
+        box-shadow: 0 4px 6px rgba(52, 211, 153, 0.2);
+        margin-top: 10px;
+    }
+    
+    #processImageBtn:hover { 
+        box-shadow: 0 6px 12px rgba(52, 211, 153, 0.3);
+    }
+    
+    .flex-items-center { 
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+        margin-bottom: 12px; 
+    }
+    
+    .grid-replacement-color { 
+        display: grid;
+        grid-template-columns: auto auto auto auto;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .grid-replacement-color > span {
+        font-weight: 500;
+        color: #4A5568;
+    }
+    
+    .radio-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        margin-top: 10px;
+    }
+    
+    .radio-group label {
+        display: flex;
+        align-items: center;
+        padding: 10px 15px;
+        background: #f8fafc;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid #e2e8f0;
+    }
+    
+    .radio-group label:hover {
+        border-color: #cbd5e0;
+        background: #edf2f7;
+    }
+    
+    .radio-group input:checked + span {
+        color: #4A6CF7;
+        font-weight: 600;
+    }
+    
+    /* Modal Styling */
+    .modal { 
+        display: none; 
+        position: fixed; 
+        z-index: 1000; 
+        left: 0; 
+        top: 0; 
+        width: 100%; 
+        height: 100%; 
+        overflow: auto; 
+        background-color: rgba(0,0,0,0.7);
+        backdrop-filter: blur(4px);
+    }
+    
+    .modal.flex { 
+        display: flex; 
+        justify-content: center; 
+        align-items: center; 
+    }
+    
+    .modal-content {
+        background-color: #fff; 
+        margin: auto; 
+        padding: 35px; 
+        border-radius: 16px; 
+        width: auto; 
+        min-width: 400px; 
+        max-width: 90%; 
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+        border: 1px solid #e2e8f0;
+        position: relative;
+    }
+    
+    .modal-content h2 {
+        font-size: 1.8rem;
+        margin-bottom: 25px;
+        color: #2d3748;
+        font-weight: 700;
+    }
+    
+    .modal-canvas-container { 
+        max-width: 100%; 
+        max-height: 60vh; 
+        overflow: auto; 
+        margin-bottom: 25px; 
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px;
+        background: #f8fafc;
+    }
+    
+    #previewCanvas { 
+        display: block; 
+        margin: 0 auto; 
+        border-radius: 8px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+    
+    .modal-buttons { 
+        display: flex; 
+        justify-content: center; 
+        gap: 15px; 
+        margin-top: 25px;
+    }
+    
+    .modal-buttons button { 
+        width: auto; 
+        padding: 12px 25px;
+        flex: 1;
+        font-size: 1rem;
+    }
+    
+    #closePreviewBtn { 
+        background: linear-gradient(135deg, #718096 0%, #4A5568 100%);
+        box-shadow: 0 4px 6px rgba(113, 128, 150, 0.2);
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 900px) {
+        .main-layout-grid {
+            flex-direction: column;
+        }
+        
+        .controls-column, .canvas-column {
+            min-width: 100%;
+        }
+        
+        .container {
+            padding: 20px;
+            margin: 15px;
+        }
+    }
+    
+    /* Decorative elements */
+    .container::before {
+        content: '';
+        position: absolute;
+        top: -100px;
+        right: -100px;
+        width: 300px;
+        height: 300px;
+        background: linear-gradient(135deg, rgba(74, 108, 247, 0.08) 0%, rgba(52, 211, 153, 0.08) 100%);
+        border-radius: 50%;
+        z-index: -1;
+    }
+    
+    .container::after {
+        content: '';
+        position: absolute;
+        bottom: -80px;
+        left: -80px;
+        width: 200px;
+        height: 200px;
+        background: linear-gradient(135deg, rgba(52, 211, 153, 0.08) 0%, rgba(74, 108, 247, 0.08) 100%);
+        border-radius: 50%;
+        z-index: -1;
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #f1f5f9;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #cbd5e0;
+        border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #a0aec0;
+    }
+    
+    /* Animation for buttons */
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.03); }
+        100% { transform: scale(1); }
+    }
+    
+    button:not(:disabled) {
+        animation: pulse 2s infinite;
+    }
+</style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>图片颜色替换工具</h1>
+            <p>在线上传图片，选择颜色并替换！</p>
+        </header>
+
+        <div class="main-layout-grid">
+            <div class="controls-column">
+                <div> 
+                    <label for="imageLoader">1. 加载图片:</label>
+                    <input type="file" id="imageLoader" accept="image/*">
+                    <p id="imageName" style="font-size: 0.8em; color: #555; margin-top: 5px;"></p>
+                </div>
+
+                <div> 
+                    <h3>视图控制:</h3>
+                    <div class="flex-items-center" style="gap: 5px; margin-bottom: 5px;">
+                        <button id="zoomInBtn" title="放大" style="width: 40px; aspect-ratio: 1;">➕</button>
+                        <button id="zoomOutBtn" title="缩小" style="width: 40px; aspect-ratio: 1;">➖</button>
+                        <button id="resetViewBtn" title="重置视图" style="flex-grow: 1;">重置</button>
+                    </div>
+                     <p id="zoomLevel" style="font-size: 0.8em; color: #555;">缩放: 100.0%</p>
+                </div>
+
+                <div> 
+                    <h3>2. 目标颜色 (点击图片拾取):</h3>
+                    <div class="flex-items-center">
+                        <span id="targetColorPreview" class="color-preview" style="background-color: white;"></span>
+                        <span id="targetColorRGB">RGB: (未选择)</span>
+                    </div>
+                </div>
+
+                <div> 
+                    <h3>3. 替换颜色:</h3>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <input type="color" id="replaceColorPicker" title="选择替换颜色">
+                        <span id="replacementColorPreview" class="color-preview" style="background-color: black;"></span>
+                        <span>(或手动输入RGB)</span>
+                    </div>
+                    <div class="grid-replacement-color" style="grid-template-columns: auto 1fr; /* Simpler grid for RGB only */">
+                        <span>R:</span><input type="number" id="replaceR" value="0" min="0" max="255">
+                        <span>G:</span><input type="number" id="replaceG" value="0" min="0" max="255">
+                        <span>B:</span><input type="number" id="replaceB" value="0" min="0" max="255">
+                        <span>Alpha:</span><input type="number" id="replaceA" value="255" min="0" max="255">
+                    </div>
+                </div>
+
+                <div> 
+                    <h3>4. 颜色容差 (0-255):</h3>
+                    <input type="number" id="tolerance" value="20" min="0" max="255" style="width: 100px;">
+                </div>
+                
+                <div> 
+                    <h3>5. 处理区域和模式:</h3>
+                    <div style="margin-bottom: 10px;">
+                        <button id="clearRoiBtn" disabled>清除选区 (ROI)</button>
+                    </div>
+                    <div>
+                        <label><input type="radio" name="processingMode" value="all" checked>替换整张图片</label>
+                        <label><input type="radio" name="processingMode" value="inside" disabled>仅替换选区内</label>
+                        <label><input type="radio" name="processingMode" value="outside" disabled>仅替换选区外</label>
+                    </div>
+                </div>
+
+                <div> 
+                    <button id="processImageBtn" disabled>处理并预览</button>
+                </div>
+            </div>
+
+            <div class="canvas-column">
+                <p class="canvas-instructions">左键拾色/拖拽选区, 右键/中键拖拽移动, 滚轮缩放</p>
+                <div id="canvasContainer" class="canvas-container">
+                    <canvas id="mainCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="previewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="font-size: 1.5em; margin-bottom: 15px;">处理结果预览</h2>
+            <div class="modal-canvas-container">
+                <canvas id="previewCanvas"></canvas>
+            </div>
+            <div class="modal-buttons">
+                <button id="saveImageBtn">保存图片</button>
+                <button id="openInNewTabBtn">在新标签页打开</button>
+                <button id="closePreviewBtn" style="background-color: #7f8c8d;">关闭预览</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- DOM Elements ---
+    const imageLoader = document.getElementById('imageLoader');
+    const imageNameDisplay = document.getElementById('imageName');
+    const mainCanvas = document.getElementById('mainCanvas');
+    const canvasContainer = document.getElementById('canvasContainer');
+    const ctx = mainCanvas.getContext('2d');
+
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+    const resetViewBtn = document.getElementById('resetViewBtn');
+    const zoomLevelDisplay = document.getElementById('zoomLevel');
+
+    const targetColorPreview = document.getElementById('targetColorPreview');
+    const targetColorRGB = document.getElementById('targetColorRGB');
+    
+    const replaceColorPicker = document.getElementById('replaceColorPicker'); 
+    const replaceRInput = document.getElementById('replaceR');
+    const replaceGInput = document.getElementById('replaceG');
+    const replaceBInput = document.getElementById('replaceB');
+    const replaceAInput = document.getElementById('replaceA');
+    const replacementColorPreview = document.getElementById('replacementColorPreview');
+
+    const toleranceInput = document.getElementById('tolerance');
+    const clearRoiBtn = document.getElementById('clearRoiBtn');
+    const processModeRadios = document.querySelectorAll('input[name="processingMode"]');
+    
+    const processImageBtn = document.getElementById('processImageBtn');
+
+    const previewModal = document.getElementById('previewModal');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const previewCtx = previewCanvas.getContext('2d');
+    const saveImageBtn = document.getElementById('saveImageBtn');
+    const openInNewTabBtn = document.getElementById('openInNewTabBtn');
+    const closePreviewBtn = document.getElementById('closePreviewBtn');
+
+    // --- State Variables ---
+    let originalImage = null; 
+    let originalImageData = null; 
+    let zoomFactor = 1.0;
+    let panX = 0;
+    let panY = 0;
+    let isPanning = false;
+    let lastPanPosition = { x: 0, y: 0 };
+    let roi = null; 
+    let isDefiningRoi = false;
+    let roiStartPoint = null; 
+    let pickedTargetColor = null; 
+    let processedImageForSave = null; 
+
+    // --- Initialization & Event Listeners ---
+    function init() {
+        imageLoader.addEventListener('change', loadImage);
+        zoomInBtn.addEventListener('click', () => zoom(1.2));
+        zoomOutBtn.addEventListener('click', () => zoom(1 / 1.2));
+        resetViewBtn.addEventListener('click', resetView);
+        mainCanvas.addEventListener('mousedown', handleMouseDown);
+        mainCanvas.addEventListener('mousemove', handleMouseMove);
+        mainCanvas.addEventListener('mouseup', handleMouseUp);
+        mainCanvas.addEventListener('mouseleave', handleMouseUp); 
+        mainCanvas.addEventListener('wheel', handleWheelZoom, { passive: false });
+        mainCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        clearRoiBtn.addEventListener('click', clearROI);
+        processImageBtn.addEventListener('click', startImageProcessing);
+
+        replaceColorPicker.addEventListener('input', handleColorPickerChange); 
+        [replaceRInput, replaceGInput, replaceBInput].forEach(input => { 
+            input.addEventListener('input', handleRgbInputChange);
+        });
+        replaceAInput.addEventListener('input', updateReplacementPreview); 
+
+        updateReplacementPreview(); 
+
+        closePreviewBtn.addEventListener('click', () => {
+            previewModal.classList.remove('flex'); 
+            previewModal.style.display = 'none'; 
+        });
+        saveImageBtn.addEventListener('click', downloadProcessedImage);
+        openInNewTabBtn.addEventListener('click', openProcessedInNewTab);
+        
+        window.addEventListener('resize', () => {
+            if(originalImage) resetView(); 
+        });
+        if (canvasContainer.clientWidth > 0 && canvasContainer.clientHeight > 0) {
+            mainCanvas.width = canvasContainer.clientWidth;
+            mainCanvas.height = canvasContainer.clientHeight;
+        }
+    }
+
+    function hexToRgb(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : null;
+    }
+
+    function rgbToHex(r, g, b) {
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+    }
+
+    function handleColorPickerChange(event) {
+        const hexColor = event.target.value;
+        const rgbColor = hexToRgb(hexColor);
+        if (rgbColor) {
+            replaceRInput.value = rgbColor.r;
+            replaceGInput.value = rgbColor.g;
+            replaceBInput.value = rgbColor.b;
+            updateReplacementPreview(); 
+        }
+    }
+
+    function handleRgbInputChange() {
+        try {
+            const r = parseInt(replaceRInput.value) || 0;
+            const g = parseInt(replaceGInput.value) || 0;
+            const b = parseInt(replaceBInput.value) || 0;
+            if (r >= 0 && r <= 255 && g >= 0 && g <= 255 && b >= 0 && b <= 255) {
+                replaceColorPicker.value = rgbToHex(r, g, b);
+            }
+        } catch (e) { /* Ignore parse errors */ }
+        updateReplacementPreview(); 
+    }
+
+
+    function loadImage(event) {
+        const file = event.target.files[0];
+        if (file) {
+            imageNameDisplay.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                originalImage = new Image();
+                originalImage.onload = () => {
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = originalImage.width;
+                    tempCanvas.height = originalImage.height;
+                    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true }); 
+                    tempCtx.drawImage(originalImage, 0, 0);
+                    try {
+                        originalImageData = tempCtx.getImageData(0, 0, originalImage.width, originalImage.height);
+                    } catch (error) {
+                        console.error("Error getting ImageData:", error);
+                        alert("无法处理此图片。请尝试其他图片或格式。");
+                        processImageBtn.disabled = true; originalImage = null; originalImageData = null;
+                        imageNameDisplay.textContent = "加载失败"; return;
+                    }
+                    resetView(); 
+                    processImageBtn.disabled = false; pickedTargetColor = null;
+                    targetColorPreview.style.backgroundColor = 'white';
+                    targetColorRGB.textContent = 'RGB: (未选择)'; clearROI();
+                };
+                originalImage.onerror = () => {
+                    alert("无法加载图片文件。"); imageNameDisplay.textContent = "加载失败"; processImageBtn.disabled = true;
+                };
+                originalImage.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function resetView() {
+        if (!originalImage) return;
+        const containerWidth = canvasContainer.clientWidth;
+        const containerHeight = canvasContainer.clientHeight;
+        mainCanvas.width = containerWidth; mainCanvas.height = containerHeight;
+        const hRatio = containerWidth / originalImage.width;
+        const vRatio = containerHeight / originalImage.height;
+        zoomFactor = Math.min(hRatio, vRatio, 1.0); 
+        panX = (containerWidth - (originalImage.width * zoomFactor)) / 2;
+        panY = (containerHeight - (originalImage.height * zoomFactor)) / 2;
+        updateZoomDisplay(); drawImage();
+    }
+
+    function drawImage() {
+        if (!originalImage) { ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height); return; }
+        if (mainCanvas.width !== canvasContainer.clientWidth || mainCanvas.height !== canvasContainer.clientHeight) {
+            mainCanvas.width = canvasContainer.clientWidth; mainCanvas.height = canvasContainer.clientHeight;
+        }
+        ctx.fillStyle = '#e0e0e0'; ctx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+        ctx.save(); ctx.translate(panX, panY); ctx.scale(zoomFactor, zoomFactor);
+        ctx.drawImage(originalImage, 0, 0); ctx.restore();
+        drawROI();
+    }
+    
+    function updateZoomDisplay() { zoomLevelDisplay.textContent = `缩放: ${(zoomFactor * 100).toFixed(1)}%`; }
+
+    function zoom(factor, mouseX, mouseY) {
+        if (!originalImage) return;
+        const prevZoom = zoomFactor; zoomFactor *= factor;
+        zoomFactor = Math.max(0.05, Math.min(zoomFactor, 20)); 
+        if (mouseX === undefined || mouseY === undefined) { 
+            mouseX = mainCanvas.width / 2; mouseY = mainCanvas.height / 2;
+        }
+        panX = mouseX - (mouseX - panX) * (zoomFactor / prevZoom);
+        panY = mouseY - (mouseY - panY) * (zoomFactor / prevZoom);
+        updateZoomDisplay(); drawImage();
+    }
+    
+    function handleWheelZoom(event) {
+        event.preventDefault(); if (!originalImage) return;
+        const delta = event.deltaY > 0 ? 1 / 1.15 : 1.15; 
+        const rect = mainCanvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left; const mouseY = event.clientY - rect.top;
+        zoom(delta, mouseX, mouseY);
+    }
+
+    function handleMouseDown(event) {
+        if (!originalImage) return;
+        const rect = mainCanvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left; const mouseY = event.clientY - rect.top;
+        if (event.button === 0) { 
+            isDefiningRoi = true; roiStartPoint = { canvasX: mouseX, canvasY: mouseY };
+        } else if (event.button === 2 || event.button === 1) { 
+            event.preventDefault(); isPanning = true;
+            lastPanPosition = { x: mouseX, y: mouseY }; mainCanvas.style.cursor = 'grabbing';
+        }
+    }
+
+    function handleMouseMove(event) {
+        if (!originalImage) return;
+        const rect = mainCanvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left; const mouseY = event.clientY - rect.top;
+        if (isPanning) {
+            const dx = mouseX - lastPanPosition.x; const dy = mouseY - lastPanPosition.y;
+            panX += dx; panY += dy; lastPanPosition = { x: mouseX, y: mouseY }; drawImage();
+        } else if (isDefiningRoi && roiStartPoint) {
+            drawImage(); ctx.save(); ctx.strokeStyle = 'rgba(255,0,0,0.8)';
+            ctx.lineWidth = 1.5 / zoomFactor; ctx.setLineDash([6 / zoomFactor, 3 / zoomFactor]);
+            const currentRoiCanvas = {
+                x: Math.min(roiStartPoint.canvasX, mouseX), y: Math.min(roiStartPoint.canvasY, mouseY),
+                width: Math.abs(mouseX - roiStartPoint.canvasX), height: Math.abs(mouseY - roiStartPoint.canvasY)
+            };
+            ctx.strokeRect(currentRoiCanvas.x, currentRoiCanvas.y, currentRoiCanvas.width, currentRoiCanvas.height);
+            ctx.restore();
+        }
+    }
+
+    function handleMouseUp(event) {
+        const rect = mainCanvas.getBoundingClientRect();
+        const mouseUpX = event.clientX - rect.left; 
+        const mouseUpY = event.clientY - rect.top;
+
+        if (isPanning) {
+            isPanning = false;
+            mainCanvas.style.cursor = 'grab';
+        } else if (isDefiningRoi && roiStartPoint) { // Was in the middle of defining ROI
+            const dx = Math.abs(mouseUpX - roiStartPoint.canvasX);
+            const dy = Math.abs(mouseUpY - roiStartPoint.canvasY);
+
+            if (dx > 5 || dy > 5) { // It was a drag, finalize ROI
+                const roiCanvasX1 = Math.min(roiStartPoint.canvasX, mouseUpX);
+                const roiCanvasY1 = Math.min(roiStartPoint.canvasY, mouseUpY);
+                const roiCanvasX2 = Math.max(roiStartPoint.canvasX, mouseUpX);
+                const roiCanvasY2 = Math.max(roiStartPoint.canvasY, mouseUpY);
+
+                const imgCoords1 = canvasToImageCoords(roiCanvasX1, roiCanvasY1);
+                const imgCoords2 = canvasToImageCoords(roiCanvasX2, roiCanvasY2);
+
+                roi = {
+                    x: Math.floor(Math.min(imgCoords1.x, imgCoords2.x)),
+                    y: Math.floor(Math.min(imgCoords1.y, imgCoords2.y)),
+                    width: Math.floor(Math.abs(imgCoords2.x - imgCoords1.x)),
+                    height: Math.floor(Math.abs(imgCoords2.y - imgCoords1.y))
+                };
+                roi.x = Math.max(0, roi.x);
+                roi.y = Math.max(0, roi.y);
+                if (roi.x + roi.width > originalImage.width) roi.width = originalImage.width - roi.x;
+                if (roi.y + roi.height > originalImage.height) roi.height = originalImage.height - roi.y;
+                if (roi.width <= 0 || roi.height <= 0) roi = null;
+            } else { 
+                // It was a click-like action (small drag) during an ROI definition sequence.
+                // Only pick color if it was a genuine mouseup *inside* the canvas that was too small for an ROI.
+                if (event.type !== 'mouseleave' && event.button === 0) { 
+                    pickColor(mouseUpX, mouseUpY);
+                }
+                roi = null; 
+            }
+            // Common cleanup for ROI definition sequence
+            isDefiningRoi = false; 
+            roiStartPoint = null; 
+            updateRoiControls(); 
+            drawImage(); 
+        } else if (event.type !== 'mouseleave' && event.button === 0) {
+            // This handles a simple click (not a drag for ROI, not panning, and not mouseleave)
+            pickColor(mouseUpX, mouseUpY);
+        }
+    }
+    
+    function canvasToImageCoords(canvasX, canvasY) {
+        if (!originalImage) return { x: 0, y: 0};
+        return { x: (canvasX - panX) / zoomFactor, y: (canvasY - panY) / zoomFactor };
+    }
+
+    function pickColor(canvasX, canvasY) {
+        if (!originalImage || !originalImageData) return;
+        const { x: imgX, y: imgY } = canvasToImageCoords(canvasX, canvasY);
+        if (imgX >= 0 && imgX < originalImage.width && imgY >= 0 && imgY < originalImage.height) {
+            const x = Math.floor(imgX); const y = Math.floor(imgY);
+            const index = (y * originalImage.width + x) * 4;
+            const r = originalImageData.data[index]; const g = originalImageData.data[index+1]; const b = originalImageData.data[index+2];
+            pickedTargetColor = { r, g, b };
+            targetColorPreview.style.backgroundColor = `rgb(${r},${g},${b})`;
+            targetColorRGB.textContent = `RGB: (${r}, ${g}, ${b})`;
+        }
+    }
+
+    function drawROI() {
+        if (!roi || !originalImage) return;
+        ctx.save(); ctx.strokeStyle = 'rgba(220, 53, 69, 0.9)'; 
+        ctx.lineWidth = 1.5 / zoomFactor; ctx.setLineDash([5 / zoomFactor, 3 / zoomFactor]); 
+        const canvasRoiX = roi.x * zoomFactor + panX; const canvasRoiY = roi.y * zoomFactor + panY;
+        const canvasRoiWidth = roi.width * zoomFactor; const canvasRoiHeight = roi.height * zoomFactor;
+        ctx.strokeRect(canvasRoiX, canvasRoiY, canvasRoiWidth, canvasRoiHeight); ctx.restore();
+    }
+    
+    function clearROI() { roi = null; updateRoiControls(); drawImage(); }
+
+    function updateRoiControls() {
+        const hasRoi = roi !== null; clearRoiBtn.disabled = !hasRoi;
+        processModeRadios.forEach(radio => {
+            if (radio.value === 'inside' || radio.value === 'outside') {
+                radio.disabled = !hasRoi;
+                if (!hasRoi && radio.checked) { document.querySelector('input[name="processingMode"][value="all"]').checked = true; }
+            }
+        });
+    }
+    
+    function updateReplacementPreview() {
+        try {
+            const r = parseInt(replaceRInput.value) || 0;
+            const g = parseInt(replaceGInput.value) || 0;
+            const b = parseInt(replaceBInput.value) || 0;
+            const finalR = Math.max(0,Math.min(255,r));
+            const finalG = Math.max(0,Math.min(255,g));
+            const finalB = Math.max(0,Math.min(255,b));
+            replacementColorPreview.style.backgroundColor = `rgb(${finalR},${finalG},${finalB})`;
+            if (document.activeElement !== replaceColorPicker) { // Avoid loop if color picker is active
+                 replaceColorPicker.value = rgbToHex(finalR, finalG, finalB);
+            }
+        } catch (e) { replacementColorPreview.style.backgroundColor = 'black'; }
+    }
+
+    function startImageProcessing() {
+        if (!originalImage || !originalImageData) { alert("请先加载图片。"); return; }
+        if (!pickedTargetColor) { alert("请先选择目标颜色。"); return; }
+        const targetR = pickedTargetColor.r; const targetG = pickedTargetColor.g; const targetB = pickedTargetColor.b;
+        const replaceRVal = parseInt(replaceRInput.value); const replaceGVal = parseInt(replaceGInput.value);
+        const replaceBVal = parseInt(replaceBInput.value); const replaceAVal = parseInt(replaceAInput.value);
+        const toleranceVal = parseInt(toleranceInput.value);
+        const mode = document.querySelector('input[name="processingMode"]:checked').value;
+        if (isNaN(replaceRVal) || isNaN(replaceGVal) || isNaN(replaceBVal) || isNaN(replaceAVal) || isNaN(toleranceVal)) {
+            alert("替换颜色或容差值无效。"); return;
+        }
+        const newImageData = new ImageData(new Uint8ClampedArray(originalImageData.data), originalImage.width, originalImage.height);
+        const data = newImageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+            const r_orig = data[i]; const g_orig = data[i+1]; const b_orig = data[i+2];
+            let processThisPixel = false;
+            if (mode === 'all') { processThisPixel = true; } 
+            else if (roi) {
+                const pixelX = (i/4)%originalImage.width; const pixelY = Math.floor((i/4)/originalImage.width);
+                const isInRoi = pixelX>=roi.x && pixelX<(roi.x+roi.width) && pixelY>=roi.y && pixelY<(roi.y+roi.height);
+                if (mode === 'inside' && isInRoi) processThisPixel = true;
+                if (mode === 'outside' && !isInRoi) processThisPixel = true;
+            }
+            if (processThisPixel) {
+                const dist = Math.sqrt(Math.pow(r_orig-targetR,2)+Math.pow(g_orig-targetG,2)+Math.pow(b_orig-targetB,2));
+                if (dist <= toleranceVal) {
+                    data[i] = Math.max(0,Math.min(255,replaceRVal)); data[i+1] = Math.max(0,Math.min(255,replaceGVal));
+                    data[i+2] = Math.max(0,Math.min(255,replaceBVal)); data[i+3] = Math.max(0,Math.min(255,replaceAVal));
+                }
+            }
+        }
+        processedImageForSave = newImageData; 
+        previewCanvas.width = originalImage.width; previewCanvas.height = originalImage.height;
+        previewCtx.putImageData(newImageData, 0, 0);
+        const modalCanvasContainer = document.querySelector('.modal-canvas-container');
+        const maxModalW = modalCanvasContainer.clientWidth > 0 ? modalCanvasContainer.clientWidth*0.95 : 500;
+        const maxModalH = modalCanvasContainer.clientHeight > 0 ? modalCanvasContainer.clientHeight*0.95 : 400;
+        let displayW = originalImage.width; let displayH = originalImage.height;
+        if (displayW > maxModalW || displayH > maxModalH) {
+            const ratio = Math.min(maxModalW/displayW, maxModalH/displayH);
+            displayW = Math.max(1,Math.floor(displayW*ratio)); displayH = Math.max(1,Math.floor(displayH*ratio));
+        }
+        previewCanvas.style.width = `${displayW}px`; previewCanvas.style.height = `${displayH}px`;
+        previewModal.classList.add('flex'); previewModal.style.display = 'flex';
+    }
+
+    function downloadProcessedImage() {
+        if (!processedImageForSave) return;
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = processedImageForSave.width; tempCanvas.height = processedImageForSave.height;
+        const tempCtx = tempCanvas.getContext('2d'); tempCtx.putImageData(processedImageForSave, 0, 0);
+        const dataURL = tempCanvas.toDataURL('image/png');
+        const link = document.createElement('a'); link.href = dataURL; link.download = 'processed_image.png';
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    }
+    
+    function openProcessedInNewTab() {
+        if (!processedImageForSave) return;
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = processedImageForSave.width; tempCanvas.height = processedImageForSave.height;
+        const tempCtx = tempCanvas.getContext('2d'); tempCtx.putImageData(processedImageForSave, 0, 0);
+        const dataURL = tempCanvas.toDataURL('image/png');
+        const newTab = window.open();
+        newTab.document.write(`<img src="${dataURL}" alt="Processed Image" style="max-width:100%; max-height:100vh; display:block; margin:auto;">`);
+        newTab.document.title = "处理后图片预览";
+    }
+
+    init();
+</script>
+</body>
+</html>
