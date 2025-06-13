@@ -17,13 +17,11 @@ class ColorReplacerApp:
 
         self.style = ttk.Style()
 
-        # Image and Path
+        # State Variables
         self.image_path = None
         self.original_pil_image = None
         self.display_pil_image = None
         self.tk_image = None
-
-        # State Variables
         self.roi_rect_original = None
         self.roi_rect_canvas_id = None
         self.drag_start_canvas_coords = None
@@ -31,8 +29,6 @@ class ColorReplacerApp:
         self.flood_fill_seeds = []
         self.seed_marker_ids = []
         self.target_color_rgb = None
-
-        # Zoom and Pan
         self.zoom_factor = 1.0
         self.pan_offset_orig = (0.0, 0.0)
         self.base_zoom = 1.0
@@ -40,7 +36,6 @@ class ColorReplacerApp:
         self.max_zoom = 10.0
         self.last_pan_mouse_canvas = None
         self.is_panning = False
-        
         self.temp_preview_file = None
 
         # --- UI Elements ---
@@ -96,7 +91,7 @@ class ColorReplacerApp:
         ttk.Label(self.frame_colors, text="颜色容差:").grid(row=4, column=0, sticky="w", pady=3, padx=5)
         self.entry_tolerance = ttk.Entry(self.frame_colors, width=5); self.entry_tolerance.grid(row=4, column=1, sticky="ew", padx=5); self.entry_tolerance.insert(0, "20")
         ttk.Label(self.frame_colors, text="边缘平滑:").grid(row=5, column=0, sticky="w", pady=3, padx=5)
-        self.entry_feather = ttk.Entry(self.frame_colors, width=5); self.entry_feather.grid(row=5, column=1, sticky="ew", padx=5); self.entry_feather.insert(0, "10")
+        self.entry_feather = ttk.Entry(self.frame_colors, width=5); self.entry_feather.grid(row=5, column=1, sticky="ew", padx=5); self.entry_feather.insert(0, "50")
 
         self.frame_roi_mode = ttk.LabelFrame(master, text="处理模式", padding=(10, 10))
         self.frame_roi_mode.pack(padx=10, pady=5, fill="x")
@@ -139,30 +134,39 @@ class ColorReplacerApp:
         self.drag_start_canvas_coords = (event.x, event.y)
         self.is_defining_roi = False
 
+    # --- 更新：增加了严格的模式检查 ---
     def on_left_drag(self, event):
         if not self.drag_start_canvas_coords or not self.original_pil_image: return
 
-        # This is the first moment a click becomes a drag.
-        if not self.is_defining_roi:
-            # Clear point-based selections when starting to draw a rectangle.
-            self.flood_fill_seeds.clear()
-            self.target_color_rgb = None
-            self.lbl_target_color_preview.config(bg="white")
-            self.lbl_target_color_rgb.config(text="RGB: (尚未选择)")
-            self.update_roi_mode_buttons_state()
-            self.update_display_image_and_roi() # Redraw to remove markers
+        distance = math.hypot(event.x - self.drag_start_canvas_coords[0], event.y - self.drag_start_canvas_coords[1])
+        drag_threshold = 3
 
+        if distance < drag_threshold:
+            return # 忽略微小的移动
+
+        # 一旦确认为拖拽，检查当前是否有魔棒选区存在
+        if self.flood_fill_seeds:
+            messagebox.showwarning(
+                "操作受限",
+                "您已激活“魔棒”选区。如需框选新选区，请先点击“清除选区”按钮。",
+                parent=self.master
+            )
+            self.drag_start_canvas_coords = None  # 中断此次拖拽操作
+            return
+
+        # 如果没有魔棒选区，则可以开始绘制矩形
         self.is_defining_roi = True
         
-        # Draw the rectangle
-        x1_c, y1_c = self.drag_start_canvas_coords; x2_c, y2_c = event.x, event.y
-        if self.roi_rect_canvas_id: self.canvas_image.coords(self.roi_rect_canvas_id, x1_c, y1_c, x2_c, y2_c)
-        else: self.roi_rect_canvas_id = self.canvas_image.create_rectangle(x1_c, y1_c, x2_c, y2_c, outline="red", dash=(4,2), width=1.5)
+        x1_c, y1_c = self.drag_start_canvas_coords
+        x2_c, y2_c = event.x, event.y
+        if self.roi_rect_canvas_id:
+            self.canvas_image.coords(self.roi_rect_canvas_id, x1_c, y1_c, x2_c, y2_c)
+        else:
+            self.roi_rect_canvas_id = self.canvas_image.create_rectangle(x1_c, y1_c, x2_c, y2_c, outline="red", dash=(4, 2), width=1.5)
 
     def on_left_release(self, event):
         if not self.original_pil_image: return
 
-        # Case 1: Finished drawing a rectangle
         if self.is_defining_roi and self.drag_start_canvas_coords:
             c_x1, c_y1 = self.drag_start_canvas_coords; c_x2, y2_c = event.x, event.y
             orig_x1, orig_y1 = self.canvas_to_original_coords(min(c_x1, c_x2), min(c_y1, y2_c))
@@ -170,52 +174,49 @@ class ColorReplacerApp:
             img_w, img_h = self.original_pil_image.size
             orig_x1,orig_y1 = max(0,min(orig_x1,img_w)), max(0,min(orig_y1,img_h))
             orig_x2,orig_y2 = max(0,min(orig_x2,img_w)), max(0,min(orig_y2,img_h))
-
-            if orig_x2 > orig_x1 and orig_y2 > orig_y1:
+            if orig_x2 > orig_x1 + 1 and orig_y2 > orig_y1 + 1:
                 self.roi_rect_original = (orig_x1, orig_y1, orig_x2, orig_y2)
                 self.roi_mode_var.set("inside")
+            else:
+                if self.roi_rect_canvas_id:
+                    self.canvas_image.delete(self.roi_rect_canvas_id)
+                    self.roi_rect_canvas_id = None
             self.update_display_image_and_roi()
 
-        # Case 2: Performed a simple click
         elif not self.is_defining_roi and self.drag_start_canvas_coords:
             click_data = self._get_data_at_canvas_coords(self.drag_start_canvas_coords[0], self.drag_start_canvas_coords[1])
             if click_data:
+                # 单击操作会自动清除矩形选区
+                if self.roi_rect_original:
+                    self.roi_rect_original = None
+                
                 (r, g, b), (orig_x, orig_y) = click_data
                 new_seed = (int(orig_x), int(orig_y))
                 current_mode = self.roi_mode_var.get()
-
-                # If already in magic wand mode, ADD a seed point.
-                if current_mode == "floodfill":
+                
+                if current_mode == "floodfill" and self.target_color_rgb is not None:
                     if new_seed not in self.flood_fill_seeds:
                         self.flood_fill_seeds.append(new_seed)
-                # Otherwise, this click STARTS a new point-based selection.
                 else:
-                    self.roi_rect_original = None # Clear rectangle selection
                     self.target_color_rgb = (r, g, b)
                     self.flood_fill_seeds.clear()
                     self.flood_fill_seeds.append(new_seed)
-                    # Update UI with the new color
                     self.lbl_target_color_preview.config(bg=f"#{r:02x}{g:02x}{b:02x}")
                     self.lbl_target_color_rgb.config(text=f"RGB: {(r,g,b)}")
 
                 self.update_display_image_and_roi()
 
-        # Reset state for next action
         self.drag_start_canvas_coords = None
         self.is_defining_roi = False
         self.update_roi_mode_buttons_state()
 
     def clear_all_selections(self):
-        # Clear rectangle selection state
         self.roi_rect_original = None
-        
-        # Clear point-based selection state
         self.flood_fill_seeds.clear()
         self.target_color_rgb = None
         self.lbl_target_color_preview.config(bg="white")
         self.lbl_target_color_rgb.config(text="RGB: (尚未选择)")
-
-        # Update UI state and redraw canvas to remove visuals
+        self.roi_mode_var.set("none")
         self.update_roi_mode_buttons_state()
         self.update_display_image_and_roi()
 
@@ -255,7 +256,6 @@ class ColorReplacerApp:
         if canvas_w <= 1 or canvas_h <= 1:
             self.master.after(50, self.update_display_image_and_roi); return
         
-        # Redraw the background and the image slice
         bg_color = "lightgray"
         self.display_pil_image = Image.new('RGBA', (canvas_w, canvas_h), bg_color)
         src_x1_orig, src_y1_orig = self.pan_offset_orig
@@ -275,7 +275,6 @@ class ColorReplacerApp:
         self.tk_image = ImageTk.PhotoImage(self.display_pil_image)
         self.canvas_image.create_image(0, 0, anchor=tk.NW, image=self.tk_image)
         
-        # Redraw selection visuals on top
         self.draw_roi_on_canvas()
         self.draw_seed_markers()
         self.update_zoom_label()
@@ -294,10 +293,8 @@ class ColorReplacerApp:
             r_rep,g_rep,b_rep,a_rep = int(self.entry_replace_r.get()),int(self.entry_replace_g.get()),int(self.entry_replace_b.get()),int(self.entry_replace_a.get())
             if not all(0 <= v <= 255 for v in [r_rep,g_rep,b_rep,a_rep]): raise ValueError("RGBA值需在0-255间")
             replacement_rgba = (r_rep,g_rep,b_rep,a_rep)
-            tolerance = int(self.entry_tolerance.get())
-            if not (0 <= tolerance): raise ValueError("容差值必须为正数")
-            feather = int(self.entry_feather.get())
-            if not (0 <= feather): raise ValueError("平滑值必须为正数")
+            tolerance = int(self.entry_tolerance.get()); feather = int(self.entry_feather.get())
+            if not (0 <= tolerance and 0 <= feather): raise ValueError("容差和平滑值必须为正数")
         except ValueError as e: 
             messagebox.showerror("输入错误", f"输入参数无效: {e}"); return
         
@@ -322,9 +319,8 @@ class ColorReplacerApp:
                         nx, ny = px + dx, py + dy
                         if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in visited:
                             visited.add((nx, ny))
-                            neighbor_index = ny * width + nx
-                            nr, ng, nb, _ = original_pixel_data[neighbor_index]
-                            dist = math.sqrt((nr - r_target)**2 + (ng - g_target)**2 + (nb - b_target)**2)
+                            nr, ng, nb, _ = original_pixel_data[ny * width + nx]
+                            dist = math.hypot(nr - r_target, ng - g_target, nb - b_target)
                             if dist < max_dist: q.append((nx, ny))
             else:
                 for i in range(len(datas)):
@@ -340,11 +336,9 @@ class ColorReplacerApp:
             
             for i in pixels_to_process_indices:
                 item_r, item_g, item_b, item_a = original_pixel_data[i]
-                dist = math.sqrt((item_r - r_target)**2 + (item_g - g_target)**2 + (item_b - b_target)**2)
+                dist = math.hypot(item_r - r_target, item_g - g_target, item_b - b_target)
                 if dist >= max_dist: continue
-                blend_ratio = 0.0
-                if dist < tolerance: blend_ratio = 1.0
-                elif feather > 0: blend_ratio = 1.0 - ((dist - tolerance) / feather)
+                blend_ratio = 1.0 if dist < tolerance else (1.0 - ((dist - tolerance) / feather)) if feather > 0 else 0.0
                 if blend_ratio > 0:
                     final_r = replacement_rgba[0] * blend_ratio + item_r * (1.0 - blend_ratio)
                     final_g = replacement_rgba[1] * blend_ratio + item_g * (1.0 - blend_ratio)
@@ -352,8 +346,7 @@ class ColorReplacerApp:
                     final_a = replacement_rgba[3] * blend_ratio + item_a * (1.0 - blend_ratio)
                     datas[i] = (int(final_r), int(final_g), int(final_b), int(final_a))
 
-            processed_pil_image = Image.new("RGBA", (width, height))
-            processed_pil_image.putdata(datas)
+            processed_pil_image = Image.new("RGBA", (width, height)); processed_pil_image.putdata(datas)
             self.show_preview_window(processed_pil_image, replacement_rgba[3] < 255)
         except Exception as e:
             messagebox.showerror("处理错误", f"处理图片时发生错误: {e}")
