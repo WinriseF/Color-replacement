@@ -29,7 +29,7 @@
 </table>
 
 <details>
-<summary>👉 点击查看更多处理效果示例</summary>
+<summary><strong>👉 点击查看更多处理效果示例</strong></summary>
 
 | 功能 | 效果图 |
 | :--- | :--- |
@@ -37,6 +37,32 @@
 | **基础抠图 (Matting)** | <img src="images/抠图.png" alt="抠图效果" width="300"> |
 | **去除水印 (Watermark Removal)** | <img src="images/去水印.png" alt="去水印效果" width="300"> |
 
+<table>
+  <tr>
+    <td align="center"><strong>原图</strong></td>
+    <td align="center"><strong>消除效果</strong></td>
+  </tr>
+  <tr>
+    <td><img src="images/sl1.jpg" alt="原始图片" width="400"></td>
+    <td><img src="images/sl12.png" alt="处理后图片" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>原图</strong></td>
+    <td align="center"><strong>换色效果</strong></td>
+  </tr>
+  <tr>
+    <td><img src="images/sl2.jpg" alt="原始图片" width="400"></td>
+    <td><img src="images/sl22.png" alt="处理后图片" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>原图</strong></td>
+    <td align="center"><strong>抠图效果</strong></td>
+  </tr>
+  <tr>
+    <td><img src="images/sl4.jpg" alt="原始图片" width="400"></td>
+    <td><img src="images/sl42.png" alt="处理后图片" width="400"></td>
+  </tr>
+</table>
 </details>
 
 <br>
@@ -46,7 +72,7 @@
 ### 🚀 三种使用方式
 
 - **方式一 (推荐)**：使用已打包好的文件。请在项目主页右侧的 **Releases** 中下载最新的 Windows 可执行版本，下载后直接运行，无需安装。
-
+![image](images/主页面.png)
 - **方式二**：使用网页版。直接访问项目提供的 HTML 文件即可在浏览器中运行。
   > **注意**：由于网页环境限制，网页版仅支持基础的颜色替换，无法使用“选区”、“扩散填充”等高级功能。
 
@@ -93,6 +119,9 @@ pip install Pillow
     -   **仅替换选区内颜色**: 先用鼠标左键拖拽出一个矩形选区，程序将只替换选区内的颜色。
     -   **替换选区外颜色**: 与上一条相反，保留选区内，替换选区外的颜色。
     -   **扩散填充**: 类似魔棒工具。先点选一个目标颜色，然后切换到此模式，程序会从您之前点选的位置开始向外扩散替换颜色，类似于水流从点击位置流满整个相关颜色区域，在这个模式下可以进行多次点击让区域颜色进行替换。
+    - 下图是进行抠图示例：先点击图片空白处设置目标颜色，然后透明度设置为0，然后选择扩散填充，将图片主体中不与外界接触的“独立”区域打上标签，设置平滑度（一般120左右就可以了，不要超过164），然后处理并预览（你可以选择不保存，图片文件缓存会在系统的临时文件夹temp中，退出程序自动清理）
+    ![images](images/koutu.png)
+    ![images](images/预览.png)
 
 4.  **设置替换颜色**:
     -   **手动输入**: 在“替换颜色”区域的 `R`, `G`, `B`, `A` 输入框中填入期望的数值 (0-255)。
