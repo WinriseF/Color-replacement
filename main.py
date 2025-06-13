@@ -200,7 +200,6 @@ class ColorReplacerApp:
         if not self.original_pil_image: return
         self.drag_start_canvas_coords = (event.x, event.y)
         self.is_defining_roi = False
-        self.drag_warning_shown = False
 
     def on_left_drag(self, event):
         if not self.drag_start_canvas_coords or not self.original_pil_image: return
@@ -208,6 +207,7 @@ class ColorReplacerApp:
         drag_threshold = 3
         if distance < drag_threshold:
             return
+            
         if self.roi_mode_var.get() == "floodfill":
             if not self.drag_warning_shown:
                 messagebox.showwarning(
@@ -217,13 +217,10 @@ class ColorReplacerApp:
                 )
                 self.drag_warning_shown = True
             return
-        # 如果不是扩散填充模式，则允许拖拽画框
+
         if not self.is_defining_roi:
             if self.flood_fill_seeds:
                 self.flood_fill_seeds.clear()
-                self.target_color_rgb = None
-                self.lbl_target_color_preview.config(bg="white")
-                self.lbl_target_color_rgb.config(text="RGB: (尚未选择)")
                 self.update_roi_mode_buttons_state()
                 self.update_display_image_and_roi()
 
@@ -235,6 +232,17 @@ class ColorReplacerApp:
             self.canvas_image.coords(self.roi_rect_canvas_id, x1_c, y1_c, x2_c, y2_c)
         else:
             self.roi_rect_canvas_id = self.canvas_image.create_rectangle(x1_c, y1_c, x2_c, y2_c, outline="red", dash=(4, 2), width=1.5)
+
+    def clear_all_selections(self):
+        self.roi_rect_original = None
+        self.flood_fill_seeds.clear()
+        self.target_color_rgb = None
+        self.lbl_target_color_preview.config(bg="white")
+        self.lbl_target_color_rgb.config(text="RGB: (尚未选择)")
+        self.roi_mode_var.set("none")
+        self.drag_warning_shown = False  # 在这里重置警告标志
+        self.update_roi_mode_buttons_state()
+        self.update_display_image_and_roi()
 
     def on_left_release(self, event):
         if not self.original_pil_image: return
