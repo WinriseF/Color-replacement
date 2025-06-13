@@ -6,7 +6,7 @@ import os
 import platform
 import subprocess
 import tempfile
-import math
+import math 
 
 class ColorReplacerApp:
     def __init__(self, master):
@@ -24,11 +24,12 @@ class ColorReplacerApp:
         self.display_pil_image = None
         self.tk_image = None
 
-        # ROI
+        # ROI and Flood Fill Seed
         self.roi_rect_original = None
         self.roi_rect_canvas_id = None
         self.drag_start_canvas_coords = None
         self.is_defining_roi = False
+        self.flood_fill_seed = None # 新增：扩散填充的起始点
 
         # Zoom and Pan
         self.zoom_factor = 1.0
@@ -107,7 +108,6 @@ class ColorReplacerApp:
         self.entry_tolerance.grid(row=4, column=1, sticky="ew", padx=5)
         self.entry_tolerance.insert(0, "20")
         
-        # --- 新增：边缘平滑设置 ---
         ttk.Label(self.frame_colors, text="边缘平滑:").grid(row=5, column=0, sticky="w", pady=3, padx=5)
         self.entry_feather = ttk.Entry(self.frame_colors, width=5)
         self.entry_feather.grid(row=5, column=1, sticky="ew", padx=5)
@@ -116,11 +116,14 @@ class ColorReplacerApp:
         self.frame_roi_mode = ttk.LabelFrame(master, text="处理模式", padding=(10, 10))
         self.frame_roi_mode.pack(padx=10, pady=5, fill="x")
         self.roi_mode_var = tk.StringVar(value="none")
-        modes = [("替换整张图片", "none"), ("仅替换选区内颜色", "inside"), ("替换选区外颜色", "outside")]
+        # --- 新增“扩散填充(魔棒)”模式 ---
+        modes = [("替换整张图片", "none"), ("仅替换选区内颜色", "inside"), ("替换选区外颜色", "outside"), ("扩散填充(魔棒)", "floodfill")]
         for i, (text, mode) in enumerate(modes):
             rb = ttk.Radiobutton(self.frame_roi_mode, text=text, variable=self.roi_mode_var, value=mode, command=self.update_roi_mode_buttons_state)
             rb.pack(side=tk.LEFT, padx=10, pady=5, expand=True)
-            if mode in ["inside", "outside"]: rb.config(state=tk.DISABLED)
+            # 初始时禁用需要前提条件的模式
+            if mode in ["inside", "outside", "floodfill"]:
+                rb.config(state=tk.DISABLED)
 
         self.frame_image_display = ttk.LabelFrame(master, text="图片预览 (左键拾色/拖拽选区, 右键拖拽移动, 滚轮缩放)", padding=(5,5))
         self.frame_image_display.pack(padx=10, pady=5, fill="both", expand=True)
@@ -145,7 +148,7 @@ class ColorReplacerApp:
         self.btn_process = ttk.Button(self.frame_actions, text="处理并预览", command=self.process_image, state=tk.DISABLED)
         self.btn_process.pack(side=tk.RIGHT, padx=5, pady=5)
         
-        for entry in [self.entry_replace_r, self.entry_replace_g, self.entry_replace_b, self.entry_replace_a, self.entry_tolerance]:
+        for entry in [self.entry_replace_r, self.entry_replace_g, self.entry_replace_b, self.entry_replace_a, self.entry_tolerance, self.entry_feather]:
             entry.bind("<KeyRelease>", self.update_replacement_color_preview)
         
         self.master.bind("<Configure>", self.on_window_resize)
@@ -153,7 +156,7 @@ class ColorReplacerApp:
 
     def on_window_resize(self, event=None):
         if self.original_pil_image and (event is None or event.widget == self.master or event.widget == self.canvas_image):
-            self.master.after(50, self.update_display_image_and_roi) # 延迟一点点以获取正确的winfo
+            self.master.after(50, self.update_display_image_and_roi) 
 
     def update_zoom_label(self):
         self.lbl_zoom_factor.config(text=f"缩放: {self.zoom_factor*100:.1f}%")
@@ -254,13 +257,25 @@ class ColorReplacerApp:
         if not self.original_pil_image: return (0,0)
         return ((orig_x - self.pan_offset_orig[0]) * self.zoom_factor, (orig_y - self.pan_offset_orig[1]) * self.zoom_factor)
 
+    # --- 更新：根据状态（是否有选区/颜色）启用/禁用单选按钮 ---
     def update_roi_mode_buttons_state(self, event=None):
         has_roi = self.roi_rect_original is not None
+        has_target_color = self.target_color_rgb is not None
+
         for child in self.frame_roi_mode.winfo_children():
             if isinstance(child, ttk.Radiobutton): 
                 mode_value = child.cget("value")
-                if mode_value in ["inside", "outside"]: child.config(state=tk.NORMAL if has_roi else tk.DISABLED)
-        if not has_roi and self.roi_mode_var.get() != "none": self.roi_mode_var.set("none")
+                if mode_value in ["inside", "outside"]:
+                    child.config(state=tk.NORMAL if has_roi else tk.DISABLED)
+                elif mode_value == "floodfill":
+                    child.config(state=tk.NORMAL if has_target_color else tk.DISABLED)
+        
+        current_mode = self.roi_mode_var.get()
+        if not has_roi and current_mode in ["inside", "outside"]:
+            self.roi_mode_var.set("none")
+        if not has_target_color and current_mode == "floodfill":
+            self.roi_mode_var.set("none")
+
         self.btn_clear_roi.config(state=tk.NORMAL if has_roi else tk.DISABLED)
 
     def pick_replacement_color(self):
@@ -279,6 +294,7 @@ class ColorReplacerApp:
             self.lbl_replacement_color_preview.config(bg=f"#{r:02x}{g:02x}{b:02x}" if all(0 <= val <= 255 for val in [r,g,b]) else "white")
         except ValueError: self.lbl_replacement_color_preview.config(bg="white")
 
+    # --- 更新：加载图片时重置状态 ---
     def load_image(self, path=None):
         if path is None:
             path = filedialog.askopenfilename(title="选择图片文件", filetypes=(("常用图片格式", "*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.tiff;*.tif;*.webp"),("所有文件", "*.*")))
@@ -300,12 +316,14 @@ class ColorReplacerApp:
                 self.clamp_pan_offset()
                 self.btn_process.config(state=tk.NORMAL)
                 self.target_color_rgb = None
+                self.flood_fill_seed = None # 重置起始点
                 self.lbl_target_color_preview.config(bg="white"); self.lbl_target_color_rgb.config(text="RGB: (尚未选择)")
-                self.clear_roi_and_update()
+                self.clear_roi_and_update() # 这也会调用 update_roi_mode_buttons_state
                 self.update_display_image_and_roi()
             except Exception as e:
                 messagebox.showerror("错误", f"无法加载图片: {e}")
                 self.image_path=None; self.original_pil_image=None; self.display_pil_image=None; self.tk_image=None
+                self.flood_fill_seed = None
                 self.lbl_image_path.config(text="加载失败"); self.btn_process.config(state=tk.DISABLED)
                 self.clear_roi_and_update(); self.update_display_image_and_roi()
 
@@ -338,13 +356,13 @@ class ColorReplacerApp:
         self.drag_start_canvas_coords = None; self.is_defining_roi = False
         self.update_roi_mode_buttons_state()
 
-    def on_middle_press(self, event): # 右键按下
+    def on_middle_press(self, event):
         if not self.original_pil_image: return
         self.last_pan_mouse_canvas = (event.x, event.y)
         self.is_panning = True
         self.canvas_image.config(cursor="fleur")
 
-    def on_middle_drag(self, event): # 右键拖动
+    def on_middle_drag(self, event):
         if not self.is_panning or not self.last_pan_mouse_canvas or not self.original_pil_image: return
         dx_canvas, dy_canvas = event.x - self.last_pan_mouse_canvas[0], event.y - self.last_pan_mouse_canvas[1]
         dx_orig, dy_orig = dx_canvas / self.zoom_factor, dy_canvas / self.zoom_factor
@@ -352,10 +370,11 @@ class ColorReplacerApp:
         self.clamp_pan_offset(); self.update_display_image_and_roi()
         self.last_pan_mouse_canvas = (event.x, event.y)
 
-    def on_middle_release(self, event): # 右键释放
+    def on_middle_release(self, event):
         self.is_panning = False; self.last_pan_mouse_canvas = None
         self.canvas_image.config(cursor="")
 
+    # --- 更新：拾取颜色时，同时记录起始点 ---
     def pick_color_at_canvas_coords(self, canvas_x, canvas_y):
         if self.original_pil_image:
             orig_x, orig_y = self.canvas_to_original_coords(canvas_x, canvas_y)
@@ -365,8 +384,10 @@ class ColorReplacerApp:
                     img_pick = self.original_pil_image.convert("RGBA")
                     r,g,b,_ = img_pick.getpixel((int(orig_x), int(orig_y)))
                     self.target_color_rgb = (r,g,b)
+                    self.flood_fill_seed = (int(orig_x), int(orig_y)) # 记录起始点
                     self.lbl_target_color_preview.config(bg=f"#{r:02x}{g:02x}{b:02x}")
                     self.lbl_target_color_rgb.config(text=f"RGB: {(r,g,b)}")
+                    self.update_roi_mode_buttons_state() # 调用以激活魔棒模式
                 except Exception as e: messagebox.showerror("错误", f"无法获取像素颜色: {e}")
 
     def clear_roi_and_update(self):
@@ -375,14 +396,16 @@ class ColorReplacerApp:
         self.update_roi_mode_buttons_state()
         self.update_display_image_and_roi()
 
-    # --- 函数已重写 ---
+    # --- 函数已重写：集成所有处理模式 ---
     def process_image(self):
         if not self.image_path: messagebox.showerror("错误", "请先加载一张图片。"); return
         if not self.target_color_rgb: messagebox.showerror("错误", "请先点击图片选择要替换的目标颜色。"); return
         
         current_roi_mode = self.roi_mode_var.get()
-        if current_roi_mode != "none" and not self.roi_rect_original:
+        if current_roi_mode in ["inside", "outside"] and not self.roi_rect_original:
             messagebox.showerror("错误", "选择了选区处理模式，但未定义选区。"); return
+        if current_roi_mode == "floodfill" and not self.flood_fill_seed:
+            messagebox.showerror("错误", "使用扩散填充模式前，请先在图片上点击一个起始点。"); return
 
         try:
             r_rep,g_rep,b_rep,a_rep = int(self.entry_replace_r.get()),int(self.entry_replace_g.get()),int(self.entry_replace_b.get()),int(self.entry_replace_a.get())
@@ -390,7 +413,7 @@ class ColorReplacerApp:
             replacement_rgba = (r_rep,g_rep,b_rep,a_rep)
             
             tolerance = int(self.entry_tolerance.get())
-            if not (0 <= tolerance <= 442): raise ValueError("容差值建议在0-442之间") # sqrt(255^2*3) is ~441.7
+            if not (0 <= tolerance): raise ValueError("容差值必须为正数")
 
             feather = int(self.entry_feather.get())
             if not (0 <= feather): raise ValueError("平滑值必须为正数")
@@ -401,96 +424,96 @@ class ColorReplacerApp:
         try:
             img_to_process_copy = self.original_pil_image.convert("RGBA")
             datas = list(img_to_process_copy.getdata())
+            original_pixel_data = list(datas)
             width, height = img_to_process_copy.size
-            
             r_target, g_target, b_target = self.target_color_rgb
 
-            for i in range(len(datas)):
-                px, py = i % width, i // width
-                item_r, item_g, item_b, item_a = datas[i]
+            pixels_to_process_indices = []
+            max_dist = tolerance + feather
 
-                # 检查像素是否在需要处理的区域内 (ROI)
-                is_in_processing_area = False
-                if current_roi_mode == "none":
-                    is_in_processing_area = True
-                elif self.roi_rect_original:
-                    r_x1, r_y1, r_x2, r_y2 = self.roi_rect_original
-                    is_inside_roi = (r_x1 <= px < r_x2 and r_y1 <= py < r_y2)
-                    if current_roi_mode == "inside" and is_inside_roi:
-                        is_in_processing_area = True
-                    elif current_roi_mode == "outside" and not is_inside_roi:
-                        is_in_processing_area = True
+            if current_roi_mode == "floodfill":
+                q = [self.flood_fill_seed]
+                visited = {self.flood_fill_seed}
                 
-                if not is_in_processing_area:
-                    continue
+                head = 0
+                while head < len(q):
+                    px, py = q[head]; head+=1
+                    pixels_to_process_indices.append(py * width + px)
+                    
+                    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        nx, ny = px + dx, py + dy
+                        if 0 <= nx < width and 0 <= ny < height and (nx, ny) not in visited:
+                            visited.add((nx, ny))
+                            neighbor_index = ny * width + nx
+                            nr, ng, nb, _ = original_pixel_data[neighbor_index]
+                            dist = math.sqrt((nr - r_target)**2 + (ng - g_target)**2 + (nb - b_target)**2)
+                            if dist < max_dist:
+                                q.append((nx, ny))
+            else:
+                for i in range(len(datas)):
+                    px, py = i % width, i // width
+                    should_check = False
+                    if current_roi_mode == "none":
+                        should_check = True
+                    elif self.roi_rect_original:
+                        r_x1, r_y1, r_x2, r_y2 = self.roi_rect_original
+                        is_inside_roi = (r_x1 <= px < r_x2 and r_y1 <= py < r_y2)
+                        if current_roi_mode == "inside" and is_inside_roi: should_check = True
+                        elif current_roi_mode == "outside" and not is_inside_roi: should_check = True
+                    if should_check: pixels_to_process_indices.append(i)
 
-                # --- 核心平滑替换逻辑 ---
-                # 计算颜色距离 (Euclidean distance in RGB space)
+            for i in pixels_to_process_indices:
+                item_r, item_g, item_b, item_a = original_pixel_data[i]
                 dist = math.sqrt((item_r - r_target)**2 + (item_g - g_target)**2 + (item_b - b_target)**2)
                 
-                blend_ratio = 0.0 # 混合比例，0.0表示不混合，1.0表示完全替换
+                if dist >= max_dist: continue
 
+                blend_ratio = 0.0
                 if dist < tolerance:
                     blend_ratio = 1.0
-                elif feather > 0 and tolerance <= dist < tolerance + feather:
-                    # 在羽化区域内，计算混合比例，实现平滑过渡
+                elif feather > 0:
                     blend_ratio = 1.0 - ((dist - tolerance) / feather)
                 
                 if blend_ratio > 0:
-                    # 根据混合比例，混合原始颜色和替换颜色
-                    # C_final = C_replace * ratio + C_original * (1 - ratio)
                     final_r = replacement_rgba[0] * blend_ratio + item_r * (1.0 - blend_ratio)
                     final_g = replacement_rgba[1] * blend_ratio + item_g * (1.0 - blend_ratio)
                     final_b = replacement_rgba[2] * blend_ratio + item_b * (1.0 - blend_ratio)
-                    
-                    # 同时混合透明度
                     final_a = replacement_rgba[3] * blend_ratio + item_a * (1.0 - blend_ratio)
-                    
                     datas[i] = (int(final_r), int(final_g), int(final_b), int(final_a))
 
             processed_pil_image = Image.new("RGBA", (width, height))
             processed_pil_image.putdata(datas)
             self.show_preview_window(processed_pil_image, replacement_rgba[3] < 255)
-
         except Exception as e:
             messagebox.showerror("处理错误", f"处理图片时发生错误: {e}")
 
-
-    def _open_with_system_viewer(self, image_to_view): # 新增辅助方法
+    def _open_with_system_viewer(self, image_to_view):
         try:
-            # 创建一个带特定后缀的临时文件，以便系统知道如何打开它
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
                 image_to_view.save(tmp_file.name, "PNG")
-                self.temp_preview_file = tmp_file.name # 保存路径以备后用
-
+                self.temp_preview_file = tmp_file.name
             if self.temp_preview_file:
                 system = platform.system()
-                if system == "Windows":
-                    os.startfile(self.temp_preview_file)
-                elif system == "Darwin": # macOS
-                    subprocess.call(["open", self.temp_preview_file])
-                else: # Linux and other UNIX-like
-                    subprocess.call(["xdg-open", self.temp_preview_file])
+                if system == "Windows": os.startfile(self.temp_preview_file)
+                elif system == "Darwin": subprocess.call(["open", self.temp_preview_file])
+                else: subprocess.call(["xdg-open", self.temp_preview_file])
         except Exception as e:
-            messagebox.showerror("打开错误", f"无法使用系统查看器打开图片: {e}", parent=self.master) # parent 设为主窗口
+            messagebox.showerror("打开错误", f"无法使用系统查看器打开图片: {e}", parent=self.master)
 
-    def _cleanup_temp_file(self): # 新增辅助方法
+    def _cleanup_temp_file(self):
         if self.temp_preview_file and os.path.exists(self.temp_preview_file):
             try:
                 os.remove(self.temp_preview_file)
                 self.temp_preview_file = None
             except Exception as e:
                 print(f"无法删除临时文件 {self.temp_preview_file}: {e}")
-        self.temp_preview_file = None # 确保即使删除失败也重置
+        self.temp_preview_file = None
 
     def show_preview_window(self, processed_image, is_transparent_replacement):
         preview_window = tk.Toplevel(self.master)
         preview_window.title("预览处理结果")
         preview_window.grab_set()
-        
-        # 绑定关闭事件以清理临时文件
         preview_window.protocol("WM_DELETE_WINDOW", lambda: (self._cleanup_temp_file(), preview_window.destroy()))
-
 
         max_preview_w, max_preview_h = 600, 500
         img_w, img_h = processed_image.size
@@ -500,12 +523,9 @@ class ColorReplacerApp:
             pw, ph = int(img_w * ratio), int(img_h * ratio)
             if pw > 0 and ph > 0:
                  display_image_for_preview = processed_image.resize((pw, ph), Image.Resampling.LANCZOS)
-            else: 
-                display_image_for_preview = processed_image.resize((100,100), Image.Resampling.LANCZOS)
         
         final_disp_w = max(1, display_image_for_preview.width)
         final_disp_h = max(1, display_image_for_preview.height)
-
         tk_preview_image = ImageTk.PhotoImage(display_image_for_preview.resize((final_disp_w, final_disp_h), Image.Resampling.LANCZOS))
 
         canvas_preview = tk.Canvas(preview_window, width=final_disp_w, height=final_disp_h, bg="lightgray")
@@ -516,23 +536,16 @@ class ColorReplacerApp:
         frame_preview_buttons = ttk.Frame(preview_window, padding=(0,5,0,10)) 
         frame_preview_buttons.pack()
 
-        # “用系统查看器打开”按钮
-        btn_open_system = ttk.Button(frame_preview_buttons, text="用系统查看器打开",
-                                     command=lambda: self._open_with_system_viewer(processed_image))
+        btn_open_system = ttk.Button(frame_preview_buttons, text="用系统查看器打开", command=lambda: self._open_with_system_viewer(processed_image))
         btn_open_system.pack(side=tk.LEFT, padx=5)
-
-        btn_save = ttk.Button(frame_preview_buttons, text="保存图片", 
-                              command=lambda: self.finalize_save(processed_image, preview_window, is_transparent_replacement))
+        btn_save = ttk.Button(frame_preview_buttons, text="保存图片", command=lambda: self.finalize_save(processed_image, preview_window, is_transparent_replacement))
         btn_save.pack(side=tk.LEFT, padx=10)
-        btn_cancel = ttk.Button(frame_preview_buttons, text="取消", 
-                                command=lambda: (self._cleanup_temp_file(), preview_window.destroy()))
+        btn_cancel = ttk.Button(frame_preview_buttons, text="取消", command=lambda: (self._cleanup_temp_file(), preview_window.destroy()))
         btn_cancel.pack(side=tk.LEFT, padx=10)
         preview_window.resizable(False, False)
 
     def finalize_save(self, image_to_save, preview_window_instance, is_transparent_replacement):
-        # 在 finalize_save 开始时也尝试清理，以防用户直接点保存而没点系统查看器
         self._cleanup_temp_file() 
-        
         output_path = filedialog.asksaveasfilename(title="保存处理后的图片", defaultextension=".png", filetypes=(("PNG 文件", "*.png"), ("所有文件", "*.*")))
         if not output_path: preview_window_instance.focus_set(); return
         if not output_path.lower().endswith(".png") and is_transparent_replacement:
@@ -541,7 +554,7 @@ class ColorReplacerApp:
         try:
             image_to_save.save(output_path, "PNG")
             messagebox.showinfo("成功", f"图片已成功处理并保存到:\n{output_path}")
-            preview_window_instance.destroy() # 关闭预览窗口
+            preview_window_instance.destroy()
         except Exception as e:
             messagebox.showerror("保存错误", f"保存图片时发生错误: {e}", parent=preview_window_instance)
             preview_window_instance.focus_set()
