@@ -6,6 +6,7 @@ import os
 import platform
 import subprocess
 import tempfile
+import math
 
 class ColorReplacerApp:
     def __init__(self, master):
@@ -105,6 +106,12 @@ class ColorReplacerApp:
         self.entry_tolerance = ttk.Entry(self.frame_colors, width=5)
         self.entry_tolerance.grid(row=4, column=1, sticky="ew", padx=5)
         self.entry_tolerance.insert(0, "20")
+        
+        # --- 新增：边缘平滑设置 ---
+        ttk.Label(self.frame_colors, text="边缘平滑:").grid(row=5, column=0, sticky="w", pady=3, padx=5)
+        self.entry_feather = ttk.Entry(self.frame_colors, width=5)
+        self.entry_feather.grid(row=5, column=1, sticky="ew", padx=5)
+        self.entry_feather.insert(0, "10")
 
         self.frame_roi_mode = ttk.LabelFrame(master, text="处理模式", padding=(10, 10))
         self.frame_roi_mode.pack(padx=10, pady=5, fill="x")
@@ -368,42 +375,86 @@ class ColorReplacerApp:
         self.update_roi_mode_buttons_state()
         self.update_display_image_and_roi()
 
+    # --- 函数已重写 ---
     def process_image(self):
         if not self.image_path: messagebox.showerror("错误", "请先加载一张图片。"); return
         if not self.target_color_rgb: messagebox.showerror("错误", "请先点击图片选择要替换的目标颜色。"); return
+        
         current_roi_mode = self.roi_mode_var.get()
         if current_roi_mode != "none" and not self.roi_rect_original:
             messagebox.showerror("错误", "选择了选区处理模式，但未定义选区。"); return
+
         try:
             r_rep,g_rep,b_rep,a_rep = int(self.entry_replace_r.get()),int(self.entry_replace_g.get()),int(self.entry_replace_b.get()),int(self.entry_replace_a.get())
             if not all(0 <= v <= 255 for v in [r_rep,g_rep,b_rep,a_rep]): raise ValueError("RGBA值需在0-255间")
             replacement_rgba = (r_rep,g_rep,b_rep,a_rep)
-        except ValueError as e: messagebox.showerror("输入错误", f"替换颜色值无效: {e}"); return
-        try:
+            
             tolerance = int(self.entry_tolerance.get())
-            if not (0 <= tolerance <= 255): raise ValueError("容差值需在0-255间")
-        except ValueError as e: messagebox.showerror("输入错误", f"容差值无效: {e}"); return
+            if not (0 <= tolerance <= 442): raise ValueError("容差值建议在0-442之间") # sqrt(255^2*3) is ~441.7
+
+            feather = int(self.entry_feather.get())
+            if not (0 <= feather): raise ValueError("平滑值必须为正数")
+
+        except ValueError as e: 
+            messagebox.showerror("输入错误", f"输入参数无效: {e}"); return
+
         try:
             img_to_process_copy = self.original_pil_image.convert("RGBA")
             datas = list(img_to_process_copy.getdata())
             width, height = img_to_process_copy.size
+            
             r_target, g_target, b_target = self.target_color_rgb
+
             for i in range(len(datas)):
                 px, py = i % width, i // width
                 item_r, item_g, item_b, item_a = datas[i]
-                color_matches = (abs(item_r-r_target)<=tolerance and abs(item_g-g_target)<=tolerance and abs(item_b-b_target)<=tolerance)
-                if not color_matches: continue
-                should_replace = False
-                if current_roi_mode == "none": should_replace = True
+
+                # 检查像素是否在需要处理的区域内 (ROI)
+                is_in_processing_area = False
+                if current_roi_mode == "none":
+                    is_in_processing_area = True
                 elif self.roi_rect_original:
                     r_x1, r_y1, r_x2, r_y2 = self.roi_rect_original
                     is_inside_roi = (r_x1 <= px < r_x2 and r_y1 <= py < r_y2)
-                    if current_roi_mode == "inside" and is_inside_roi: should_replace = True
-                    elif current_roi_mode == "outside" and not is_inside_roi: should_replace = True
-                if should_replace: datas[i] = replacement_rgba
-            processed_pil_image = Image.new("RGBA", (width, height)); processed_pil_image.putdata(datas)
+                    if current_roi_mode == "inside" and is_inside_roi:
+                        is_in_processing_area = True
+                    elif current_roi_mode == "outside" and not is_inside_roi:
+                        is_in_processing_area = True
+                
+                if not is_in_processing_area:
+                    continue
+
+                # --- 核心平滑替换逻辑 ---
+                # 计算颜色距离 (Euclidean distance in RGB space)
+                dist = math.sqrt((item_r - r_target)**2 + (item_g - g_target)**2 + (item_b - b_target)**2)
+                
+                blend_ratio = 0.0 # 混合比例，0.0表示不混合，1.0表示完全替换
+
+                if dist < tolerance:
+                    blend_ratio = 1.0
+                elif feather > 0 and tolerance <= dist < tolerance + feather:
+                    # 在羽化区域内，计算混合比例，实现平滑过渡
+                    blend_ratio = 1.0 - ((dist - tolerance) / feather)
+                
+                if blend_ratio > 0:
+                    # 根据混合比例，混合原始颜色和替换颜色
+                    # C_final = C_replace * ratio + C_original * (1 - ratio)
+                    final_r = replacement_rgba[0] * blend_ratio + item_r * (1.0 - blend_ratio)
+                    final_g = replacement_rgba[1] * blend_ratio + item_g * (1.0 - blend_ratio)
+                    final_b = replacement_rgba[2] * blend_ratio + item_b * (1.0 - blend_ratio)
+                    
+                    # 同时混合透明度
+                    final_a = replacement_rgba[3] * blend_ratio + item_a * (1.0 - blend_ratio)
+                    
+                    datas[i] = (int(final_r), int(final_g), int(final_b), int(final_a))
+
+            processed_pil_image = Image.new("RGBA", (width, height))
+            processed_pil_image.putdata(datas)
             self.show_preview_window(processed_pil_image, replacement_rgba[3] < 255)
-        except Exception as e: messagebox.showerror("处理错误", f"处理图片时发生错误: {e}")
+
+        except Exception as e:
+            messagebox.showerror("处理错误", f"处理图片时发生错误: {e}")
+
 
     def _open_with_system_viewer(self, image_to_view): # 新增辅助方法
         try:
