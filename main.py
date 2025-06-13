@@ -520,6 +520,7 @@ class ColorReplacerApp:
         preview_window.title("预览处理结果")
         preview_window.grab_set()
         preview_window.protocol("WM_DELETE_WINDOW", lambda: (self._cleanup_temp_file(), preview_window.destroy()))
+        
         max_preview_w, max_preview_h = 600, 500
         img_w, img_h = processed_image.size
         ratio = min(max_preview_w / img_w, max_preview_h / img_h) if img_w > 0 and img_h > 0 else 1
@@ -527,17 +528,29 @@ class ColorReplacerApp:
         if ratio < 1: 
             pw, ph = int(img_w * ratio), int(img_h * ratio)
             if pw > 0 and ph > 0: display_image_for_preview = processed_image.resize((pw, ph), Image.Resampling.LANCZOS)
+        
         final_disp_w, final_disp_h = max(1, display_image_for_preview.width), max(1, display_image_for_preview.height)
         tk_preview_image = ImageTk.PhotoImage(display_image_for_preview)
+        
         canvas_preview = tk.Canvas(preview_window, width=final_disp_w, height=final_disp_h, bg="lightgray")
         canvas_preview.create_image(final_disp_w//2, final_disp_h//2, anchor=tk.CENTER, image=tk_preview_image)
         canvas_preview.image = tk_preview_image 
         canvas_preview.pack(padx=10, pady=10)
-        frame_preview_buttons = ttk.Frame(preview_window, padding=(0,5,0,10)); frame_preview_buttons.pack()
+        
+        frame_preview_buttons = ttk.Frame(preview_window, padding=(0,5,0,10))
+        frame_preview_buttons.pack()
+        
+        # --- 新增按钮在这里 ---
+        btn_continue = ttk.Button(frame_preview_buttons, text="以此图继续编辑", command=lambda: self.apply_and_continue_editing(processed_image, preview_window))
+        btn_continue.pack(side=tk.LEFT, padx=(10, 5))
+        # ---------------------
+
         ttk.Button(frame_preview_buttons, text="用系统查看器打开", command=lambda: self._open_with_system_viewer(processed_image)).pack(side=tk.LEFT, padx=5)
-        ttk.Button(frame_preview_buttons, text="保存图片", command=lambda: self.finalize_save(processed_image, preview_window, is_transparent_replacement)).pack(side=tk.LEFT, padx=10)
-        ttk.Button(frame_preview_buttons, text="取消", command=lambda: (self._cleanup_temp_file(), preview_window.destroy())).pack(side=tk.LEFT, padx=10)
+        ttk.Button(frame_preview_buttons, text="保存图片", command=lambda: self.finalize_save(processed_image, preview_window, is_transparent_replacement)).pack(side=tk.LEFT, padx=5)
+        ttk.Button(frame_preview_buttons, text="取消", command=lambda: (self._cleanup_temp_file(), preview_window.destroy())).pack(side=tk.LEFT, padx=5)
+        
         preview_window.resizable(False, False)
+        preview_window.focus_set()
 
     def finalize_save(self, image_to_save, preview_window_instance, is_transparent_replacement):
         self._cleanup_temp_file() 
@@ -551,6 +564,60 @@ class ColorReplacerApp:
             messagebox.showinfo("成功", f"图片已成功处理并保存到:\n{output_path}")
             preview_window_instance.destroy()
         except Exception as e: messagebox.showerror("保存错误", f"保存图片时发生错误: {e}", parent=preview_window_instance)
+    
+    def apply_and_continue_editing(self, processed_image, preview_window_instance):
+        """将预览图像应用回主画布，作为新的原始图像。"""
+        # 1. 更新主程序的原始图像
+        self.original_pil_image = processed_image.copy()
+
+        # 2. 更新图片路径显示（可选，但推荐）
+        #    在原文件名后添加标记，表示已被修改
+        if self.image_path:
+            base, ext = os.path.splitext(os.path.basename(self.image_path))
+            new_name = f"{base}_edited{ext}"
+            self.lbl_image_path.config(text=new_name)
+            # 我们不清空 self.image_path，因为重置视图可能还想回到最初始的状态
+        else:
+            self.lbl_image_path.config(text="*已编辑*")
+            
+        # 3. 清理所有旧的选区和目标颜色信息
+        self.clear_all_selections() # 这会重置ROI、种子点和目标颜色
+
+        # 4. 重置视图以适应可能变化的图像尺寸（虽然这里尺寸不变，但这是好习惯）
+        #    并刷新画布显示新的图像
+        self.reset_view_to_current_image() 
+
+        # 5. 清理临时文件并关闭预览窗口
+        self._cleanup_temp_file()
+        preview_window_instance.destroy()
+
+        messagebox.showinfo("操作成功", "已将处理结果应用到主画布，您可以继续编辑。", parent=self.master)
+    
+    def reset_view_to_current_image(self):
+        """根据当前内存中的 self.original_pil_image 重置视图。"""
+        if not self.original_pil_image: return
+        
+        canvas_w = self.canvas_image.winfo_width()
+        canvas_h = self.canvas_image.winfo_height()
+        if canvas_w <=1: canvas_w = 500
+        if canvas_h <=1: canvas_h = 400
+        
+        orig_w, orig_h = self.original_pil_image.size
+        if orig_w == 0 or orig_h == 0:
+            messagebox.showerror("错误", "图像尺寸无效。")
+            return
+
+        ratio_w = canvas_w / orig_w
+        ratio_h = canvas_h / orig_h
+        self.base_zoom = min(ratio_w, ratio_h, 1.0)
+        self.zoom_factor = self.base_zoom
+        self.pan_offset_orig = (
+            (orig_w - (canvas_w / self.zoom_factor)) / 2.0,
+            (orig_h - (canvas_h / self.zoom_factor)) / 2.0
+        )
+        self.clamp_pan_offset()
+        self.update_display_image_and_roi()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
