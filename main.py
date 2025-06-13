@@ -37,47 +37,53 @@ class ColorReplacerApp:
         self.last_pan_mouse_canvas = None
         self.is_panning = False
         self.temp_preview_file = None
+        self.layout_mode = ""
+        self._after_id = None
+        self.drag_warning_shown = False
 
-        # --- UI Elements ---
-        self.frame_top_controls = ttk.Frame(master, padding=(10, 5))
-        self.frame_top_controls.pack(fill="x")
-
+        # --- UI Element Creation ---
+        self.frame_top_controls = ttk.Frame(master)
         self.frame_file = ttk.LabelFrame(self.frame_top_controls, text="文件操作", padding=(10, 5))
-        self.frame_file.pack(side=tk.LEFT, padx=(0,10), fill="y")
         self.btn_load = ttk.Button(self.frame_file, text="加载图片", command=self.load_image)
-        self.btn_load.pack(pady=5, padx=5, fill="x")
         self.lbl_image_path = ttk.Label(self.frame_file, text="未选择图片", width=20, wraplength=130, anchor="center")
-        self.lbl_image_path.pack(pady=5, padx=5)
-
         self.frame_zoom_controls = ttk.LabelFrame(self.frame_top_controls, text="视图控制", padding=(10, 5))
-        self.frame_zoom_controls.pack(side=tk.LEFT, fill="y")
         self.btn_zoom_in = ttk.Button(self.frame_zoom_controls, text="+", command=self.zoom_in_center, width=3)
-        self.btn_zoom_in.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
         self.btn_zoom_out = ttk.Button(self.frame_zoom_controls, text="-", command=self.zoom_out_center, width=3)
-        self.btn_zoom_out.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
         self.lbl_zoom_factor = ttk.Label(self.frame_zoom_controls, text="缩放: 100.0%", anchor="center")
-        self.lbl_zoom_factor.grid(row=0, column=2, padx=5, pady=2, sticky="ew")
         self.btn_reset_view = ttk.Button(self.frame_zoom_controls, text="重置视图", command=self.reset_view)
-        self.btn_reset_view.grid(row=1, column=0, columnspan=3, padx=2, pady=5, sticky="ew")
-
-        self.frame_colors = ttk.LabelFrame(master, text="颜色与参数设置", padding=(10, 10))
-        self.frame_colors.pack(padx=10, pady=5, fill="x")
         
-        self.frame_colors.columnconfigure(1, weight=1)
-        self.frame_colors.columnconfigure(3, weight=1)
+        self.frame_colors = ttk.LabelFrame(master, text="颜色与参数设置", padding=(10, 10))
+        self.frame_roi_mode = ttk.LabelFrame(master, text="处理模式", padding=(10, 10))
+        self.roi_mode_var = tk.StringVar(value="none")
+        
+        self.frame_image_display = ttk.LabelFrame(master, text="图片预览 (左键拾色/拖拽选区, 右键拖拽移动, 滚轮缩放)", padding=(5,5))
+        self.btn_clear_roi = ttk.Button(self.frame_image_display, text="清除选区", command=self.clear_all_selections, state=tk.DISABLED)
+        self.canvas_image = tk.Canvas(self.frame_image_display, bg="lightgrey", width=500, height=400, relief="sunken", borderwidth=1)
+        
+        self.frame_actions = ttk.Frame(master, padding=(10,10))
+        self.btn_process = ttk.Button(self.frame_actions, text="处理并预览", command=self.process_image, state=tk.DISABLED)
 
+        # --- Place Widgets within their respective frames ---
+        self.frame_file.pack(side=tk.LEFT, padx=(0,10), fill="y")
+        self.btn_load.pack(pady=5, padx=5, fill="x")
+        self.lbl_image_path.pack(pady=5, padx=5)
+        self.frame_zoom_controls.pack(side=tk.LEFT, fill="y")
+        self.btn_zoom_in.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+        self.btn_zoom_out.grid(row=0, column=1, padx=2, pady=2, sticky="ew")
+        self.lbl_zoom_factor.grid(row=0, column=2, padx=5, pady=2, sticky="ew")
+        self.btn_reset_view.grid(row=1, column=0, columnspan=3, padx=2, pady=5, sticky="ew")
+        
+        self.frame_colors.columnconfigure(1, weight=1); self.frame_colors.columnconfigure(3, weight=1)
         ttk.Label(self.frame_colors, text="目标颜色:").grid(row=0, column=0, sticky="w", pady=3, padx=5)
         self.lbl_target_color_preview = tk.Label(self.frame_colors, text="  ", bg="white", width=3, relief="sunken", borderwidth=1)
         self.lbl_target_color_preview.grid(row=0, column=1, sticky="w", padx=5)
         self.lbl_target_color_rgb = ttk.Label(self.frame_colors, text="RGB: (尚未选择)")
         self.lbl_target_color_rgb.grid(row=0, column=2, columnspan=2, sticky="w", padx=5)
-
         ttk.Label(self.frame_colors, text="替换颜色:").grid(row=1, column=0, sticky="w", pady=3, padx=5)
         self.btn_pick_replacement_color = ttk.Button(self.frame_colors, text="选择", command=self.pick_replacement_color)
         self.btn_pick_replacement_color.grid(row=1, column=1, sticky="ew", padx=5)
         self.lbl_replacement_color_preview = tk.Label(self.frame_colors, text="  ", bg="white", width=3, relief="sunken", borderwidth=1)
         self.lbl_replacement_color_preview.grid(row=1, column=2, sticky="w", padx=5)
-
         ttk.Label(self.frame_colors, text="R:").grid(row=2, column=0, sticky="e", pady=3, padx=5)
         self.entry_replace_r = ttk.Entry(self.frame_colors, width=5); self.entry_replace_r.grid(row=2, column=1, sticky="ew", padx=5); self.entry_replace_r.insert(0, "0")
         ttk.Label(self.frame_colors, text="G:").grid(row=2, column=2, sticky="e", pady=3, padx=5)
@@ -87,29 +93,23 @@ class ColorReplacerApp:
         ttk.Label(self.frame_colors, text="透明度 (A):").grid(row=3, column=2, sticky="e", pady=3, padx=5)
         self.entry_replace_a = ttk.Entry(self.frame_colors, width=5); self.entry_replace_a.grid(row=3, column=3, sticky="ew", padx=5); self.entry_replace_a.insert(0, "255")
         self.update_replacement_color_preview()
-
         ttk.Label(self.frame_colors, text="颜色容差:").grid(row=4, column=0, sticky="w", pady=3, padx=5)
         self.entry_tolerance = ttk.Entry(self.frame_colors, width=5); self.entry_tolerance.grid(row=4, column=1, sticky="ew", padx=5); self.entry_tolerance.insert(0, "20")
         ttk.Label(self.frame_colors, text="边缘平滑:").grid(row=5, column=0, sticky="w", pady=3, padx=5)
-        self.entry_feather = ttk.Entry(self.frame_colors, width=5); self.entry_feather.grid(row=5, column=1, sticky="ew", padx=5); self.entry_feather.insert(0, "50")
+        self.entry_feather = ttk.Entry(self.frame_colors, width=5); self.entry_feather.grid(row=5, column=1, sticky="ew", padx=5); self.entry_feather.insert(0, "30")
 
-        self.frame_roi_mode = ttk.LabelFrame(master, text="处理模式", padding=(10, 10))
-        self.frame_roi_mode.pack(padx=10, pady=5, fill="x")
-        self.roi_mode_var = tk.StringVar(value="none")
-        modes = [("替换整张图片", "none"), ("仅替换选区内颜色", "inside"), ("替换选区外颜色", "outside"), ("扩散填充(魔棒)", "floodfill")]
+        modes = [("替换整张图片", "none"), ("仅替换选区内颜色", "inside"), ("替换选区外颜色", "outside"), ("扩散填充", "floodfill")]
         for i, (text, mode) in enumerate(modes):
             rb = ttk.Radiobutton(self.frame_roi_mode, text=text, variable=self.roi_mode_var, value=mode, command=self.update_roi_mode_buttons_state)
             rb.pack(side=tk.LEFT, padx=10, pady=5, expand=True)
             if mode in ["inside", "outside", "floodfill"]: rb.config(state=tk.DISABLED)
 
-        self.frame_image_display = ttk.LabelFrame(master, text="图片预览 (左键拾色/拖拽选区, 右键拖拽移动, 滚轮缩放)", padding=(5,5))
-        self.frame_image_display.pack(padx=10, pady=5, fill="both", expand=True)
-        self.btn_clear_roi = ttk.Button(self.frame_image_display, text="清除选区", command=self.clear_all_selections, state=tk.DISABLED)
         self.btn_clear_roi.place(relx=1.0, rely=0.0, anchor='ne', x=-5, y=2)
-
-        self.canvas_image = tk.Canvas(self.frame_image_display, bg="lightgrey", width=500, height=400, relief="sunken", borderwidth=1)
         self.canvas_image.pack(fill="both", expand=True, padx=5, pady=(25,5))
+        self.btn_process.pack(side=tk.RIGHT, padx=5, pady=5)
         
+        self.master.columnconfigure(1, weight=1)
+
         self.canvas_image.bind("<ButtonPress-1>", self.on_left_press)
         self.canvas_image.bind("<B1-Motion>", self.on_left_drag)
         self.canvas_image.bind("<ButtonRelease-1>", self.on_left_release)
@@ -119,42 +119,114 @@ class ColorReplacerApp:
         self.canvas_image.bind("<MouseWheel>", self.on_mouse_wheel)
         self.canvas_image.bind("<Button-4>", self.on_mouse_wheel_linux)
         self.canvas_image.bind("<Button-5>", self.on_mouse_wheel_linux)
-
-        self.frame_actions = ttk.Frame(master, padding=(10,10)); self.frame_actions.pack(fill="x")
-        self.btn_process = ttk.Button(self.frame_actions, text="处理并预览", command=self.process_image, state=tk.DISABLED)
-        self.btn_process.pack(side=tk.RIGHT, padx=5, pady=5)
-        
         self.master.bind("<Configure>", self.on_window_resize)
-        self.master.minsize(650, 700)
+        
+        self.master.geometry("951x700")
+        self.master.minsize(700, 600)
+        
+        self.master.after(50, lambda: self.update_layout(self.master.winfo_width()))
 
-    # --- Interaction Logic ---
+    def update_layout(self, width):
+        threshold = 950
+        new_mode = "wide" if width >= threshold else "narrow"
+        if new_mode == self.layout_mode:
+            return
+        self.layout_mode = new_mode
+        for widget in self.master.winfo_children():
+            if isinstance(widget, (ttk.Frame, ttk.LabelFrame)):
+                widget.grid_forget()
+
+        if self.layout_mode == "wide":
+            self.master.columnconfigure(0, weight=0); self.master.columnconfigure(1, weight=1)
+            self.master.rowconfigure(0, weight=0); self.master.rowconfigure(1, weight=0)
+            self.master.rowconfigure(2, weight=1); self.master.rowconfigure(3, weight=0)
+            self.frame_top_controls.grid(row=0, column=0, sticky="nwe", padx=10, pady=(5,0))
+            self.frame_roi_mode.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
+            self.frame_colors.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=(0, 10), pady=5)
+            self.frame_image_display.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=10, pady=5)
+            self.frame_actions.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10)
+        else:
+            self.master.columnconfigure(0, weight=1); self.master.columnconfigure(1, weight=0)
+            self.master.rowconfigure(0, weight=0); self.master.rowconfigure(1, weight=0)
+            self.master.rowconfigure(2, weight=0); self.master.rowconfigure(3, weight=1)
+            self.master.rowconfigure(4, weight=0)
+            self.frame_top_controls.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=5)
+            self.frame_colors.grid(row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=5)
+            self.frame_roi_mode.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=5)
+            self.frame_image_display.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=5)
+            self.frame_actions.grid(row=4, column=0, columnspan=2, sticky="ew", padx=10)
+
+    def update_display_image_and_roi(self):
+        if not self.original_pil_image:
+            self.canvas_image.delete("all"); return
+        canvas_w, canvas_h = self.canvas_image.winfo_width(), self.canvas_image.winfo_height()
+        if canvas_w <= 1 or canvas_h <= 1:
+            self.master.after(50, self.update_display_image_and_roi); return
+        
+        bg_color = "lightgray"
+        self.display_pil_image = Image.new('RGBA', (canvas_w, canvas_h), bg_color)
+        src_x1, src_y1 = self.pan_offset_orig
+        src_w, src_h = canvas_w / self.zoom_factor, canvas_h / self.zoom_factor
+        src_x2, src_y2 = src_x1 + src_w, src_y1 + src_h
+        crop_x1, crop_y1 = max(0, src_x1), max(0, src_y1)
+        crop_x2, crop_y2 = min(self.original_pil_image.width, src_x2), min(self.original_pil_image.height, src_y2)
+
+        if crop_x1 < crop_x2 and crop_y1 < crop_y2:
+            cropped = self.original_pil_image.crop((int(crop_x1), int(crop_y1), int(crop_x2), int(crop_y2)))
+            paste_x = (crop_x1 - src_x1) * self.zoom_factor
+            paste_y = (crop_y1 - src_y1) * self.zoom_factor
+            disp_w, disp_h = int(cropped.width * self.zoom_factor), int(cropped.height * self.zoom_factor)
+            if disp_w > 0 and disp_h > 0:
+                resized = cropped.resize((disp_w, disp_h), Image.Resampling.LANCZOS)
+                self.display_pil_image.paste(resized, (int(paste_x), int(paste_y)), resized if resized.mode == 'RGBA' else None)
+        
+        self.canvas_image.delete("all")
+        self.tk_image = ImageTk.PhotoImage(self.display_pil_image)
+        self.canvas_image.create_image(0, 0, anchor=tk.NW, image=self.tk_image)
+        
+        self.draw_roi_on_canvas()
+        self.draw_seed_markers()
+        self.update_zoom_label()
+
+    def on_window_resize(self, event=None):
+        if event and event.widget == self.master:
+            self.update_layout(event.width)
+        if self.original_pil_image:
+            if self._after_id:
+                self.master.after_cancel(self._after_id)
+            self._after_id = self.master.after(50, self.update_display_image_and_roi)
 
     def on_left_press(self, event):
         if not self.original_pil_image: return
         self.drag_start_canvas_coords = (event.x, event.y)
         self.is_defining_roi = False
+        self.drag_warning_shown = False
 
-    # --- 更新：增加了严格的模式检查 ---
     def on_left_drag(self, event):
         if not self.drag_start_canvas_coords or not self.original_pil_image: return
-
         distance = math.hypot(event.x - self.drag_start_canvas_coords[0], event.y - self.drag_start_canvas_coords[1])
         drag_threshold = 3
-
         if distance < drag_threshold:
-            return # 忽略微小的移动
-
-        # 一旦确认为拖拽，检查当前是否有魔棒选区存在
-        if self.flood_fill_seeds:
-            messagebox.showwarning(
-                "操作受限",
-                "您已激活“魔棒”选区。如需框选新选区，请先点击“清除选区”按钮。",
-                parent=self.master
-            )
-            self.drag_start_canvas_coords = None  # 中断此次拖拽操作
             return
+        if self.roi_mode_var.get() == "floodfill":
+            if not self.drag_warning_shown:
+                messagebox.showwarning(
+                    "操作受限",
+                    "您当前处于“扩散填充”模式。如需框选，请先点击“清除选区”切换回默认模式。",
+                    parent=self.master
+                )
+                self.drag_warning_shown = True
+            return
+        # 如果不是扩散填充模式，则允许拖拽画框
+        if not self.is_defining_roi:
+            if self.flood_fill_seeds:
+                self.flood_fill_seeds.clear()
+                self.target_color_rgb = None
+                self.lbl_target_color_preview.config(bg="white")
+                self.lbl_target_color_rgb.config(text="RGB: (尚未选择)")
+                self.update_roi_mode_buttons_state()
+                self.update_display_image_and_roi()
 
-        # 如果没有魔棒选区，则可以开始绘制矩形
         self.is_defining_roi = True
         
         x1_c, y1_c = self.drag_start_canvas_coords
@@ -166,7 +238,6 @@ class ColorReplacerApp:
 
     def on_left_release(self, event):
         if not self.original_pil_image: return
-
         if self.is_defining_roi and self.drag_start_canvas_coords:
             c_x1, c_y1 = self.drag_start_canvas_coords; c_x2, y2_c = event.x, event.y
             orig_x1, orig_y1 = self.canvas_to_original_coords(min(c_x1, c_x2), min(c_y1, y2_c))
@@ -182,30 +253,22 @@ class ColorReplacerApp:
                     self.canvas_image.delete(self.roi_rect_canvas_id)
                     self.roi_rect_canvas_id = None
             self.update_display_image_and_roi()
-
         elif not self.is_defining_roi and self.drag_start_canvas_coords:
             click_data = self._get_data_at_canvas_coords(self.drag_start_canvas_coords[0], self.drag_start_canvas_coords[1])
             if click_data:
-                # 单击操作会自动清除矩形选区
-                if self.roi_rect_original:
-                    self.roi_rect_original = None
-                
+                if self.roi_rect_original: self.roi_rect_original = None
                 (r, g, b), (orig_x, orig_y) = click_data
                 new_seed = (int(orig_x), int(orig_y))
                 current_mode = self.roi_mode_var.get()
-                
                 if current_mode == "floodfill" and self.target_color_rgb is not None:
-                    if new_seed not in self.flood_fill_seeds:
-                        self.flood_fill_seeds.append(new_seed)
+                    if new_seed not in self.flood_fill_seeds: self.flood_fill_seeds.append(new_seed)
                 else:
                     self.target_color_rgb = (r, g, b)
                     self.flood_fill_seeds.clear()
                     self.flood_fill_seeds.append(new_seed)
                     self.lbl_target_color_preview.config(bg=f"#{r:02x}{g:02x}{b:02x}")
                     self.lbl_target_color_rgb.config(text=f"RGB: {(r,g,b)}")
-
                 self.update_display_image_and_roi()
-
         self.drag_start_canvas_coords = None
         self.is_defining_roi = False
         self.update_roi_mode_buttons_state()
@@ -220,24 +283,17 @@ class ColorReplacerApp:
         self.update_roi_mode_buttons_state()
         self.update_display_image_and_roi()
 
-    # --- UI and State Updates ---
-
     def update_roi_mode_buttons_state(self, event=None):
         has_roi = self.roi_rect_original is not None
         has_target_color = self.target_color_rgb is not None
-
         for child in self.frame_roi_mode.winfo_children():
             if isinstance(child, ttk.Radiobutton): 
                 mode_value = child.cget("value")
-                if mode_value in ["inside", "outside"]:
-                    child.config(state=tk.NORMAL if has_roi else tk.DISABLED)
-                elif mode_value == "floodfill":
-                    child.config(state=tk.NORMAL if has_target_color else tk.DISABLED)
-        
+                if mode_value in ["inside", "outside"]: child.config(state=tk.NORMAL if has_roi else tk.DISABLED)
+                elif mode_value == "floodfill": child.config(state=tk.NORMAL if has_target_color else tk.DISABLED)
         current_mode = self.roi_mode_var.get()
         if not has_roi and current_mode in ["inside", "outside"]: self.roi_mode_var.set("none")
         if not has_target_color and current_mode == "floodfill": self.roi_mode_var.set("none")
-
         self.btn_clear_roi.config(state=tk.NORMAL if has_roi or self.flood_fill_seeds else tk.DISABLED)
 
     def draw_seed_markers(self):
@@ -245,69 +301,38 @@ class ColorReplacerApp:
         self.seed_marker_ids.clear()
         for seed_orig_x, seed_orig_y in self.flood_fill_seeds:
             cx, cy = self.original_to_canvas_coords(seed_orig_x, seed_orig_y)
-            marker1 = self.canvas_image.create_line(cx - 5, cy, cx + 5, cy, fill="yellow", width=1.5)
-            marker2 = self.canvas_image.create_line(cx, cy - 5, cx, cy + 5, fill="yellow", width=1.5)
+            marker1 = self.canvas_image.create_line(cx - 5, cy, cx + 5, cy, fill="blue", width=1.5)
+            marker2 = self.canvas_image.create_line(cx, cy - 5, cx, cy + 5, fill="blue", width=1.5)
             self.seed_marker_ids.extend([marker1, marker2])
 
-    def update_display_image_and_roi(self):
-        if not self.original_pil_image:
-            self.canvas_image.delete("all"); return
-        canvas_w, canvas_h = self.canvas_image.winfo_width(), self.canvas_image.winfo_height()
-        if canvas_w <= 1 or canvas_h <= 1:
-            self.master.after(50, self.update_display_image_and_roi); return
-        
-        bg_color = "lightgray"
-        self.display_pil_image = Image.new('RGBA', (canvas_w, canvas_h), bg_color)
-        src_x1_orig, src_y1_orig = self.pan_offset_orig
-        src_w_orig, src_h_orig = canvas_w / self.zoom_factor, canvas_h / self.zoom_factor
-        src_x2_orig, src_y2_orig = src_x1_orig + src_w_orig, src_y1_orig + src_h_orig
-        crop_x1, crop_y1 = max(0, src_x1_orig), max(0, src_y1_orig)
-        crop_x2, crop_y2 = min(self.original_pil_image.width, src_x2_orig), min(self.original_pil_image.height, src_y2_orig)
-        if crop_x1 < crop_x2 and crop_y1 < crop_y2:
-            cropped = self.original_pil_image.crop((int(crop_x1), int(crop_y1), int(crop_x2), int(crop_y2)))
-            paste_x, paste_y = (crop_x1 - src_x1_orig) * self.zoom_factor, (crop_y1 - src_y1_orig) * self.zoom_factor
-            disp_w, disp_h = int(cropped.width * self.zoom_factor), int(cropped.height * self.zoom_factor)
-            if disp_w > 0 and disp_h > 0:
-                resized = cropped.resize((disp_w, disp_h), Image.Resampling.LANCZOS)
-                self.display_pil_image.paste(resized, (int(paste_x), int(paste_y)), resized if resized.mode == 'RGBA' else None)
-        
-        self.canvas_image.delete("all")
-        self.tk_image = ImageTk.PhotoImage(self.display_pil_image)
-        self.canvas_image.create_image(0, 0, anchor=tk.NW, image=self.tk_image)
-        
-        self.draw_roi_on_canvas()
-        self.draw_seed_markers()
-        self.update_zoom_label()
-
-    # --- Core Processing ---
-
+    def draw_roi_on_canvas(self):
+        if self.roi_rect_canvas_id: self.canvas_image.delete(self.roi_rect_canvas_id); self.roi_rect_canvas_id = None
+        if self.roi_rect_original:
+            ox1, oy1, ox2, oy2 = self.roi_rect_original
+            cx1, cy1 = self.original_to_canvas_coords(ox1, oy1); cx2, cy2 = self.original_to_canvas_coords(ox2, oy2)
+            self.roi_rect_canvas_id = self.canvas_image.create_rectangle(cx1, cy1, cx2, cy2, outline="red", dash=(4,2), width=1.5) 
+    
     def process_image(self):
         if not self.image_path: messagebox.showerror("错误", "请先加载一张图片。"); return
         if not self.target_color_rgb: messagebox.showerror("错误", "请先点击图片选择要替换的目标颜色。"); return
         current_roi_mode = self.roi_mode_var.get()
-        if current_roi_mode in ["inside", "outside"] and not self.roi_rect_original:
-            messagebox.showerror("错误", "选择了选区处理模式，但未定义选区。"); return
-        if current_roi_mode == "floodfill" and not self.flood_fill_seeds:
-            messagebox.showerror("错误", "使用扩散填充模式前，请至少点击一个起始点。"); return
+        if current_roi_mode in ["inside", "outside"] and not self.roi_rect_original: messagebox.showerror("错误", "选择了选区处理模式，但未定义选区。"); return
+        if current_roi_mode == "floodfill" and not self.flood_fill_seeds: messagebox.showerror("错误", "使用扩散填充模式前，请至少点击一个起始点。"); return
         try:
             r_rep,g_rep,b_rep,a_rep = int(self.entry_replace_r.get()),int(self.entry_replace_g.get()),int(self.entry_replace_b.get()),int(self.entry_replace_a.get())
             if not all(0 <= v <= 255 for v in [r_rep,g_rep,b_rep,a_rep]): raise ValueError("RGBA值需在0-255间")
             replacement_rgba = (r_rep,g_rep,b_rep,a_rep)
             tolerance = int(self.entry_tolerance.get()); feather = int(self.entry_feather.get())
-            if not (0 <= tolerance and 0 <= feather): raise ValueError("容差和平滑值必须为正数")
-        except ValueError as e: 
-            messagebox.showerror("输入错误", f"输入参数无效: {e}"); return
-        
+            if not (0 <= tolerance <=255 and 0 <= feather <=200): raise ValueError("容差和平滑值过大或过小")
+        except ValueError as e: messagebox.showerror("输入错误", f"输入参数无效: {e}"); return
         try:
             img_to_process_copy = self.original_pil_image.convert("RGBA")
             datas = list(img_to_process_copy.getdata())
             original_pixel_data = list(datas)
             width, height = img_to_process_copy.size
             r_target, g_target, b_target = self.target_color_rgb
-
             pixels_to_process_indices = []
             max_dist = tolerance + feather
-
             if current_roi_mode == "floodfill":
                 q = list(self.flood_fill_seeds)
                 visited = set(self.flood_fill_seeds)
@@ -333,7 +358,6 @@ class ColorReplacerApp:
                         if current_roi_mode == "inside" and is_inside_roi: should_check = True
                         elif current_roi_mode == "outside" and not is_inside_roi: should_check = True
                     if should_check: pixels_to_process_indices.append(i)
-            
             for i in pixels_to_process_indices:
                 item_r, item_g, item_b, item_a = original_pixel_data[i]
                 dist = math.hypot(item_r - r_target, item_g - g_target, item_b - b_target)
@@ -345,13 +369,11 @@ class ColorReplacerApp:
                     final_b = replacement_rgba[2] * blend_ratio + item_b * (1.0 - blend_ratio)
                     final_a = replacement_rgba[3] * blend_ratio + item_a * (1.0 - blend_ratio)
                     datas[i] = (int(final_r), int(final_g), int(final_b), int(final_a))
-
             processed_pil_image = Image.new("RGBA", (width, height)); processed_pil_image.putdata(datas)
             self.show_preview_window(processed_pil_image, replacement_rgba[3] < 255)
         except Exception as e:
             messagebox.showerror("处理错误", f"处理图片时发生错误: {e}")
 
-    # --- Unchanged Helper Functions Below ---
     def _get_data_at_canvas_coords(self, canvas_x, canvas_y):
         if self.original_pil_image:
             orig_x, orig_y = self.canvas_to_original_coords(canvas_x, canvas_y)
@@ -361,8 +383,7 @@ class ColorReplacerApp:
                     img_pick = self.original_pil_image.convert("RGBA")
                     r,g,b,_ = img_pick.getpixel((int(orig_x), int(orig_y)))
                     return (r, g, b), (orig_x, orig_y)
-                except Exception as e:
-                    messagebox.showerror("错误", f"无法获取像素颜色: {e}")
+                except Exception as e: messagebox.showerror("错误", f"无法获取像素颜色: {e}")
         return None
         
     def load_image(self, path=None):
@@ -372,8 +393,8 @@ class ColorReplacerApp:
             try:
                 self.original_pil_image = Image.open(path)
                 canvas_w, canvas_h = self.canvas_image.winfo_width(), self.canvas_image.winfo_height()
-                if canvas_w <=1: canvas_w = self.canvas_image.cget("width") 
-                if canvas_h <=1: canvas_h = self.canvas_image.cget("height") 
+                if canvas_w <=1: canvas_w = 500
+                if canvas_h <=1: canvas_h = 400 
                 orig_w, orig_h = self.original_pil_image.size
                 if orig_w == 0 or orig_h == 0: raise ValueError("图片尺寸为零")
                 ratio_w, ratio_h = canvas_w / orig_w, canvas_h / orig_h
@@ -428,10 +449,6 @@ class ColorReplacerApp:
             self.lbl_replacement_color_preview.config(bg=f"#{r:02x}{g:02x}{b:02x}" if all(0 <= val <= 255 for val in [r,g,b]) else "white")
         except ValueError: self.lbl_replacement_color_preview.config(bg="white")
     
-    def on_window_resize(self, event=None):
-        if self.original_pil_image and (event is None or event.widget == self.master or event.widget == self.canvas_image):
-            self.master.after(50, self.update_display_image_and_roi)
-    
     def update_zoom_label(self):
         self.lbl_zoom_factor.config(text=f"缩放: {self.zoom_factor*100:.1f}%")
 
@@ -461,13 +478,6 @@ class ColorReplacerApp:
 
     def reset_view(self):
         if self.image_path: self.load_image(self.image_path)
-    
-    def draw_roi_on_canvas(self):
-        if self.roi_rect_canvas_id: self.canvas_image.delete(self.roi_rect_canvas_id); self.roi_rect_canvas_id = None
-        if self.roi_rect_original:
-            ox1, oy1, ox2, oy2 = self.roi_rect_original
-            cx1, cy1 = self.original_to_canvas_coords(ox1, oy1); cx2, cy2 = self.original_to_canvas_coords(ox2, oy2)
-            self.roi_rect_canvas_id = self.canvas_image.create_rectangle(cx1, cy1, cx2, cy2, outline="red", dash=(4,2), width=1.5) 
     
     def clamp_pan_offset(self):
         if not self.original_pil_image: return
