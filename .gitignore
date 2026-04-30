@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+main-p.py
+
+# Compiled binaries
+*.exe
+*.msi
+
+# Rust - 已有 rust/.gitignore，这里作为备份
+target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temp files
+temp/
+tmp/
+*.tmp
+
+# Logs
+*.log
+
+# Build
+build/
+dist/
