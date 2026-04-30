@@ -4,14 +4,15 @@ mod image_processing;
 
 use anyhow::{Context, Result};
 use eframe::egui::{
-    self, Color32, ColorImage, Context as EguiContext, Pos2, Rect, Sense, Stroke, StrokeKind,
-    TextureHandle, TextureOptions, Vec2,
+    self, Color32, ColorImage, Context as EguiContext, FontData, FontDefinitions, FontFamily, Pos2,
+    Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Vec2,
 };
 use image::RgbaImage;
 use image_processing::{ProcessOptions, ProcessingMode, SelectionRect, process_image};
 use rfd::FileDialog;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() -> eframe::Result<()> {
@@ -27,6 +28,60 @@ fn main() -> eframe::Result<()> {
         native_options,
         Box::new(|cc| Ok(Box::new(ColorReplacerApp::new(cc)))),
     )
+}
+
+fn install_cjk_fonts(ctx: &EguiContext) {
+    let mut fonts = FontDefinitions::default();
+    let mut installed = Vec::new();
+
+    for (name, path) in cjk_font_candidates() {
+        let Ok(bytes) = fs::read(path) else {
+            continue;
+        };
+
+        fonts
+            .font_data
+            .insert(name.to_owned(), Arc::new(FontData::from_owned(bytes)));
+        installed.push(name.to_owned());
+    }
+
+    if installed.is_empty() {
+        return;
+    }
+
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        let entries = fonts.families.entry(family).or_default();
+        for name in installed.iter().rev() {
+            entries.insert(0, name.clone());
+        }
+    }
+
+    ctx.set_fonts(fonts);
+}
+
+fn cjk_font_candidates() -> [(&'static str, &'static str); 8] {
+    [
+        ("Microsoft YaHei", "C:\\Windows\\Fonts\\msyh.ttc"),
+        ("SimHei", "C:\\Windows\\Fonts\\simhei.ttf"),
+        ("SimSun", "C:\\Windows\\Fonts\\simsun.ttc"),
+        ("PingFang SC", "/System/Library/Fonts/PingFang.ttc"),
+        (
+            "Hiragino Sans GB",
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        ),
+        (
+            "Noto Sans CJK",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        ),
+        (
+            "Noto Sans CJK SC",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+        ),
+        (
+            "WenQuanYi Micro Hei",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        ),
+    ]
 }
 
 struct ColorReplacerApp {
@@ -65,7 +120,9 @@ enum AppDialog {
 }
 
 impl ColorReplacerApp {
-    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        install_cjk_fonts(&cc.egui_ctx);
+
         Self {
             image_path: None,
             original_image: None,
@@ -380,10 +437,10 @@ impl ColorReplacerApp {
         let a = self.canvas_to_image_float(canvas_rect, start);
         let b = self.canvas_to_image_float(canvas_rect, end);
         let rect = SelectionRect {
-            x1: a.x.floor().max(0.0) as u32,
-            y1: a.y.floor().max(0.0) as u32,
-            x2: b.x.ceil().max(0.0) as u32,
-            y2: b.y.ceil().max(0.0) as u32,
+            x1: f64::from(a.x),
+            y1: f64::from(a.y),
+            x2: f64::from(b.x),
+            y2: f64::from(b.y),
         };
 
         if let Some(rect) = rect.normalized(image.width(), image.height()) {

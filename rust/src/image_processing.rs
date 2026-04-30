@@ -9,12 +9,12 @@ pub enum ProcessingMode {
     FloodFill,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SelectionRect {
-    pub x1: u32,
-    pub y1: u32,
-    pub x2: u32,
-    pub y2: u32,
+    pub x1: f64,
+    pub y1: f64,
+    pub x2: f64,
+    pub y2: f64,
 }
 
 impl SelectionRect {
@@ -26,15 +26,17 @@ impl SelectionRect {
             std::mem::swap(&mut self.y1, &mut self.y2);
         }
 
-        self.x1 = self.x1.min(width);
-        self.x2 = self.x2.min(width);
-        self.y1 = self.y1.min(height);
-        self.y2 = self.y2.min(height);
+        self.x1 = self.x1.clamp(0.0, f64::from(width));
+        self.x2 = self.x2.clamp(0.0, f64::from(width));
+        self.y1 = self.y1.clamp(0.0, f64::from(height));
+        self.y2 = self.y2.clamp(0.0, f64::from(height));
 
-        (self.x2 > self.x1 + 1 && self.y2 > self.y1 + 1).then_some(self)
+        (self.x2 > self.x1 + 1.0 && self.y2 > self.y1 + 1.0).then_some(self)
     }
 
     pub fn contains(self, x: u32, y: u32) -> bool {
+        let x = f64::from(x);
+        let y = f64::from(y);
         self.x1 <= x && x < self.x2 && self.y1 <= y && y < self.y2
     }
 }
@@ -53,7 +55,7 @@ pub struct ProcessOptions {
 pub fn process_image(source: &RgbaImage, options: &ProcessOptions) -> RgbaImage {
     let (width, height) = source.dimensions();
     let mut output = source.clone();
-    let max_dist = f32::from(options.tolerance) + f32::from(options.feather);
+    let max_dist = f64::from(options.tolerance) + f64::from(options.feather);
 
     match options.mode {
         ProcessingMode::FloodFill => {
@@ -91,7 +93,7 @@ fn should_process_position(x: u32, y: u32, options: &ProcessOptions) -> bool {
     }
 }
 
-fn flood_fill_indices(source: &RgbaImage, options: &ProcessOptions, max_dist: f32) -> Vec<usize> {
+fn flood_fill_indices(source: &RgbaImage, options: &ProcessOptions, max_dist: f64) -> Vec<usize> {
     let (width, height) = source.dimensions();
     let mut visited = vec![false; (width * height) as usize];
     let mut queue = VecDeque::new();
@@ -156,7 +158,7 @@ fn blend_pixel(
     source: &RgbaImage,
     output: &mut RgbaImage,
     options: &ProcessOptions,
-    max_dist: f32,
+    max_dist: f64,
 ) {
     let pixel = source.as_raw()[index * 4..index * 4 + 4]
         .try_into()
@@ -166,10 +168,10 @@ fn blend_pixel(
         return;
     }
 
-    let blend_ratio = if dist < f32::from(options.tolerance) {
+    let blend_ratio = if dist < f64::from(options.tolerance) {
         1.0
     } else if options.feather > 0 {
-        1.0 - ((dist - f32::from(options.tolerance)) / f32::from(options.feather))
+        1.0 - ((dist - f64::from(options.tolerance)) / f64::from(options.feather))
     } else {
         0.0
     };
@@ -191,14 +193,14 @@ fn blend_pixel(
     output.put_pixel(x, y, Rgba(blended));
 }
 
-fn blend_channel(replacement: u8, original: u8, ratio: f32) -> u8 {
-    ((f32::from(replacement) * ratio) + (f32::from(original) * (1.0 - ratio))) as u8
+fn blend_channel(replacement: u8, original: u8, ratio: f64) -> u8 {
+    ((f64::from(replacement) * ratio) + (f64::from(original) * (1.0 - ratio))) as u8
 }
 
-fn rgb_distance(pixel: [u8; 4], target: [u8; 3]) -> f32 {
-    let dr = f32::from(pixel[0]) - f32::from(target[0]);
-    let dg = f32::from(pixel[1]) - f32::from(target[1]);
-    let db = f32::from(pixel[2]) - f32::from(target[2]);
+fn rgb_distance(pixel: [u8; 4], target: [u8; 3]) -> f64 {
+    let dr = f64::from(pixel[0]) - f64::from(target[0]);
+    let dg = f64::from(pixel[1]) - f64::from(target[1]);
+    let db = f64::from(pixel[2]) - f64::from(target[2]);
     (dr * dr + dg * dg + db * db).sqrt()
 }
 
@@ -250,10 +252,10 @@ mod tests {
         .unwrap();
         let mut opts = options(ProcessingMode::InsideSelection);
         opts.selection = Some(SelectionRect {
-            x1: 1,
-            y1: 0,
-            x2: 3,
-            y2: 1,
+            x1: 1.0,
+            y1: 0.0,
+            x2: 3.0,
+            y2: 1.1,
         });
 
         let result = process_image(&image, &opts);
@@ -261,6 +263,74 @@ mod tests {
         assert_eq!(result.get_pixel(0, 0).0, [10, 10, 10, 255]);
         assert_eq!(result.get_pixel(1, 0).0, [110, 120, 130, 0]);
         assert_eq!(result.get_pixel(2, 0).0, [110, 120, 130, 0]);
+    }
+
+    #[test]
+    fn selection_uses_python_float_boundary_semantics() {
+        let image = RgbaImage::from_vec(
+            4,
+            1,
+            vec![
+                10, 10, 10, 255, 10, 10, 10, 255, 10, 10, 10, 255, 10, 10, 10, 255,
+            ],
+        )
+        .unwrap();
+        let mut opts = options(ProcessingMode::InsideSelection);
+        opts.selection = Some(SelectionRect {
+            x1: 0.2,
+            y1: 0.0,
+            x2: 2.2,
+            y2: 1.1,
+        });
+
+        let result = process_image(&image, &opts);
+
+        assert_eq!(result.get_pixel(0, 0).0, [10, 10, 10, 255]);
+        assert_eq!(result.get_pixel(1, 0).0, [110, 120, 130, 0]);
+        assert_eq!(result.get_pixel(2, 0).0, [110, 120, 130, 0]);
+        assert_eq!(result.get_pixel(3, 0).0, [10, 10, 10, 255]);
+    }
+
+    #[test]
+    fn limits_processing_to_selection_outside() {
+        let image = RgbaImage::from_vec(
+            3,
+            1,
+            vec![10, 10, 10, 255, 10, 10, 10, 255, 10, 10, 10, 255],
+        )
+        .unwrap();
+        let mut opts = options(ProcessingMode::OutsideSelection);
+        opts.selection = Some(SelectionRect {
+            x1: 0.5,
+            y1: 0.0,
+            x2: 1.6,
+            y2: 1.1,
+        });
+
+        let result = process_image(&image, &opts);
+
+        assert_eq!(result.get_pixel(0, 0).0, [110, 120, 130, 0]);
+        assert_eq!(result.get_pixel(1, 0).0, [10, 10, 10, 255]);
+        assert_eq!(result.get_pixel(2, 0).0, [110, 120, 130, 0]);
+    }
+
+    #[test]
+    fn excludes_pixels_at_exact_distance_limit() {
+        let image = RgbaImage::from_vec(
+            3,
+            1,
+            vec![14, 10, 10, 255, 15, 10, 10, 255, 20, 10, 10, 255],
+        )
+        .unwrap();
+        let mut opts = options(ProcessingMode::All);
+        opts.tolerance = 5;
+        opts.feather = 5;
+
+        let result = process_image(&image, &opts);
+
+        assert_eq!(result.get_pixel(0, 0).0, [110, 120, 130, 0]);
+        assert_eq!(result.get_pixel(1, 0).0, [110, 120, 130, 0]);
+        assert_eq!(result.get_pixel(2, 0).0, [20, 10, 10, 255]);
     }
 
     #[test]
